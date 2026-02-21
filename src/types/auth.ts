@@ -22,3 +22,10 @@ export interface FormErrors {
   password?: string;
   api?: string;
 }
+
+export interface RefreshResponse {
+  success: boolean;
+  token?: string;
+  message?: string;
+  error?: string;
+}

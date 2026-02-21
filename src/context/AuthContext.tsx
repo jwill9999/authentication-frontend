@@ -1,12 +1,18 @@
 import React, {
   createContext,
+  useCallback,
   useContext,
   useEffect,
   useMemo,
   useState,
   type ReactNode,
 } from 'react';
-import { authAPI } from '../services/api';
+import {
+  authAPI,
+  refreshAccessToken,
+  setAccessToken,
+  getAccessToken,
+} from '../services/api';
 import type { AuthActionResult, User } from '../types/auth';
 
 interface AuthContextValue {
@@ -19,7 +25,8 @@ interface AuthContextValue {
     password: string,
     name: string,
   ) => Promise<AuthActionResult>;
-  logout: () => void;
+  logout: () => Promise<void>;
+  logoutAll: () => Promise<void>;
   googleLogin: () => void;
   setToken: (newToken: string | null) => void;
   setUser: (newUser: User | null) => void;
@@ -32,113 +39,151 @@ interface AuthProviderProps {
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
 const getErrorMessage = (error: unknown): string => {
-  if (error instanceof Error) {
-    return error.message;
-  }
-
+  if (error instanceof Error) return error.message;
   return 'An unexpected error occurred';
 };
 
 const isUser = (value: unknown): value is User => {
-  if (typeof value !== 'object' || value === null) {
-    return false;
-  }
-
-  const maybeUser = value as Partial<User>;
-  return typeof maybeUser.email === 'string';
+  if (typeof value !== 'object' || value === null) return false;
+  return typeof (value as Partial<User>).email === 'string';
 };
 
 export const AuthProvider = ({
   children,
 }: AuthProviderProps): React.JSX.Element => {
+  // Access token lives only in memory (mirrored from api.ts module variable)
+  const [token, setTokenState] = useState<string | null>(null);
   const [user, setUser] = useState<User | null>(null);
-  const [token, setToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    const storedToken = localStorage.getItem('token');
-    const storedUser = localStorage.getItem('user');
-
-    if (storedToken && storedUser) {
-      // Initialization from localStorage on mount is intentional
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setToken(storedToken);
-
-      try {
-        const parsedStoredUser: unknown = JSON.parse(storedUser);
-        if (isUser(parsedStoredUser)) {
-          // eslint-disable-next-line react-hooks/set-state-in-effect
-          setUser(parsedStoredUser);
-        }
-      } catch {
-        localStorage.removeItem('user');
-      }
-    }
-
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setLoading(false);
+  const setToken = useCallback((newToken: string | null) => {
+    setAccessToken(newToken); // keep module-level variable in sync
+    setTokenState(newToken);
   }, []);
 
-  const login = async (
-    email: string,
-    password: string,
-  ): Promise<AuthActionResult> => {
-    try {
-      const response = await authAPI.login(email, password);
+  // ── On mount: silent refresh to restore session from httpOnly cookie ──────
+  useEffect(() => {
+    const restoreSession = async (): Promise<void> => {
+      const newToken = await refreshAccessToken();
 
-      if (response.success && response.token) {
-        const userFromResponse: User = response.user ?? { email };
+      if (newToken) {
+        setTokenState(newToken);
 
-        setToken(response.token);
-        setUser(userFromResponse);
-
-        localStorage.setItem('token', response.token);
-        localStorage.setItem('user', JSON.stringify(userFromResponse));
-
-        return { success: true };
+        const storedUser = localStorage.getItem('user');
+        if (storedUser) {
+          try {
+            const parsed: unknown = JSON.parse(storedUser);
+            if (isUser(parsed)) setUser(parsed);
+          } catch {
+            localStorage.removeItem('user');
+          }
+        }
       }
 
-      return {
-        success: false,
-        error:
-          response.error || response.message || 'Invalid response from server',
-      };
-    } catch (error) {
-      return { success: false, error: getErrorMessage(error) };
-    }
-  };
+      setLoading(false);
+    };
 
-  const register = async (
-    email: string,
-    password: string,
-    name: string,
-  ): Promise<AuthActionResult> => {
-    try {
-      const response = await authAPI.register(email, password, name);
+    restoreSession();
+  }, []);
 
-      if (!response.success) {
+  // ── Proactive refresh at 4m mark to avoid a latency-inducing 401 ─────────
+  useEffect(() => {
+    if (!token) return;
+
+    const REFRESH_INTERVAL_MS = 4 * 60 * 1000; // 4 minutes
+
+    const timerId = setInterval(async () => {
+      const newToken = await refreshAccessToken();
+      if (newToken) {
+        setTokenState(newToken);
+      } else {
+        // Refresh failed — clear session and let ProtectedRoute redirect
+        setToken(null);
+        setUser(null);
+        localStorage.removeItem('user');
+      }
+    }, REFRESH_INTERVAL_MS);
+
+    return () => clearInterval(timerId);
+  }, [token, setToken]);
+
+  // ── Login ─────────────────────────────────────────────────────────────────
+  const login = useCallback(
+    async (email: string, password: string): Promise<AuthActionResult> => {
+      try {
+        const response = await authAPI.login(email, password);
+
+        if (response.success) {
+          const inMemoryToken = getAccessToken(); // set inside authAPI.login
+          if (inMemoryToken) setTokenState(inMemoryToken);
+
+          const userFromResponse: User = response.user ?? { email };
+          setUser(userFromResponse);
+
+          // Store only non-sensitive public user info — no token in localStorage
+          localStorage.setItem('user', JSON.stringify(userFromResponse));
+
+          return { success: true };
+        }
+
         return {
           success: false,
-          error: response.error || response.message || 'Registration failed',
+          error:
+            response.error ??
+            response.message ??
+            'Invalid response from server',
         };
+      } catch (error) {
+        return { success: false, error: getErrorMessage(error) };
       }
+    },
+    [],
+  );
 
-      return { success: true };
-    } catch (error) {
-      return { success: false, error: getErrorMessage(error) };
-    }
-  };
+  // ── Register ──────────────────────────────────────────────────────────────
+  const register = useCallback(
+    async (
+      email: string,
+      password: string,
+      name: string,
+    ): Promise<AuthActionResult> => {
+      try {
+        const response = await authAPI.register(email, password, name);
 
-  const logout = (): void => {
-    setUser(null);
+        if (!response.success) {
+          return {
+            success: false,
+            error: response.error ?? response.message ?? 'Registration failed',
+          };
+        }
+
+        return { success: true };
+      } catch (error) {
+        return { success: false, error: getErrorMessage(error) };
+      }
+    },
+    [],
+  );
+
+  // ── Logout ────────────────────────────────────────────────────────────────
+  const logout = useCallback(async (): Promise<void> => {
+    await authAPI.logout(); // revokes server-side session + clears httpOnly cookie
     setToken(null);
-    localStorage.removeItem('token');
+    setUser(null);
     localStorage.removeItem('user');
-  };
+  }, [setToken]);
 
-  const googleLogin = (): void => {
+  // ── Logout all devices ────────────────────────────────────────────────────
+  const logoutAll = useCallback(async (): Promise<void> => {
+    await authAPI.logoutAll();
+    setToken(null);
+    setUser(null);
+    localStorage.removeItem('user');
+  }, [setToken]);
+
+  const googleLogin = useCallback((): void => {
     authAPI.googleLogin();
-  };
+  }, []);
 
   const contextValue = useMemo<AuthContextValue>(
     () => ({
@@ -147,12 +192,23 @@ export const AuthProvider = ({
       login,
       register,
       logout,
+      logoutAll,
       googleLogin,
       loading,
       setToken,
       setUser,
     }),
-    [googleLogin, loading, login, logout, register, token, user],
+    [
+      user,
+      token,
+      login,
+      register,
+      logout,
+      logoutAll,
+      googleLogin,
+      loading,
+      setToken,
+    ],
   );
 
   return (

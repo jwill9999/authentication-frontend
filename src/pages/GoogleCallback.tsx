@@ -1,6 +1,7 @@
 import React, { useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { setAccessToken } from '../services/api';
 import type { User } from '../types/auth';
 
 const isOAuthUser = (value: unknown): value is User => {
@@ -22,7 +23,8 @@ const GoogleCallback = (): React.JSX.Element => {
     const userParam = searchParams.get('user');
 
     if (token) {
-      localStorage.setItem('token', token);
+      // Store access token in memory only — refresh cookie is set by the server
+      setAccessToken(token);
       setToken(token);
 
       if (userParam) {
@@ -30,6 +32,7 @@ const GoogleCallback = (): React.JSX.Element => {
           const parsedUser: unknown = JSON.parse(decodeURIComponent(userParam));
 
           if (isOAuthUser(parsedUser)) {
+            // Only non-sensitive public user info goes to localStorage
             localStorage.setItem('user', JSON.stringify(parsedUser));
             setUser(parsedUser);
           }
@@ -38,7 +41,7 @@ const GoogleCallback = (): React.JSX.Element => {
         }
       }
 
-      globalThis.location.href = '/dashboard';
+      navigate('/dashboard', { replace: true });
     } else {
       navigate('/login', { state: { error: 'Google authentication failed' } });
     }

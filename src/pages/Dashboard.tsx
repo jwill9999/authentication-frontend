@@ -15,7 +15,7 @@ const getErrorMessage = (error: unknown): string => {
 };
 
 const Dashboard = (): React.JSX.Element => {
-  const { user, token, logout } = useAuth();
+  const { user, token, logout, logoutAll } = useAuth();
   const navigate = useNavigate();
   const [profile, setProfile] = useState<ProfileData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -24,22 +24,33 @@ const Dashboard = (): React.JSX.Element => {
   useEffect(() => {
     const fetchProfile = async (): Promise<void> => {
       try {
-        const data = await protectedAPI.getProfile(token!);
+        // No token argument needed — fetchWithAuth handles Authorization internally
+        const data = await protectedAPI.getProfile();
         setProfile(data);
       } catch (err) {
-        setError(getErrorMessage(err));
+        const message = getErrorMessage(err);
+        // If session expired or token reuse detected, force re-login
+        if (/401|expired|reuse/i.test(message)) {
+          await logout();
+          navigate('/login');
+          return;
+        }
+        setError(message);
       } finally {
         setLoading(false);
       }
     };
 
-    if (token) {
-      fetchProfile();
-    }
-  }, [token]);
+    fetchProfile();
+  }, [logout, navigate]);
 
-  const handleLogout = (): void => {
-    logout();
+  const handleLogout = async (): Promise<void> => {
+    await logout();
+    navigate('/login');
+  };
+
+  const handleLogoutAll = async (): Promise<void> => {
+    await logoutAll();
     navigate('/login');
   };
 
@@ -47,9 +58,18 @@ const Dashboard = (): React.JSX.Element => {
     <div className="dashboard-container">
       <nav className="navbar">
         <h2>My Dashboard</h2>
-        <button onClick={handleLogout} className="logout-button">
-          Logout
-        </button>
+        <div style={{ display: 'flex', gap: '10px' }}>
+          <button
+            onClick={handleLogoutAll}
+            className="logout-button"
+            style={{ background: '#764ba2', color: 'white' }}
+          >
+            Logout All Devices
+          </button>
+          <button onClick={handleLogout} className="logout-button">
+            Logout
+          </button>
+        </div>
       </nav>
 
       <div className="dashboard-content">
@@ -79,9 +99,11 @@ const Dashboard = (): React.JSX.Element => {
               This is a protected route. Only authenticated users can access
               this page.
             </p>
-            <p>
-              <strong>JWT Token:</strong> {token?.substring(0, 20)}...
-            </p>
+            {token && (
+              <p>
+                <strong>JWT Token:</strong> {token.substring(0, 20)}...
+              </p>
+            )}
           </div>
         </div>
 
