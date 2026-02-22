@@ -42,7 +42,7 @@ const Dashboard = (): React.JSX.Element => {
     };
 
     fetchProfile();
-  }, [logout, navigate]);
+  }, [logout, navigate, protectedAPI, getErrorMessage]);
 
   const handleLogout = async (): Promise<void> => {
     await logout();
