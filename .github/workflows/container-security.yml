@@ -5,6 +5,8 @@ on:
     branches: [main]
   push:
     branches: [main]
+  schedule:
+    - cron: '0 4 * * *'
 
 jobs:
   scan-image:
@@ -30,9 +32,11 @@ jobs:
           image-ref: login-app-frontend:ci
           format: sarif
           output: trivy-results.sarif
+          scanners: vuln
           vuln-type: os,library
           severity: CRITICAL,HIGH
           ignore-unfixed: true
+          exit-code: 0
 
       - name: Upload scan results to Security tab
         uses: github/codeql-action/upload-sarif@v3
@@ -40,12 +44,13 @@ jobs:
         with:
           sarif_file: trivy-results.sarif
 
-      - name: Trivy policy gate (fail on CRITICAL)
+      - name: Trivy policy gate (fail on configured threshold)
         uses: aquasecurity/trivy-action@0.28.0
         with:
           image-ref: login-app-frontend:ci
           format: table
+          scanners: vuln
           vuln-type: os,library
-          severity: CRITICAL
+          severity: ${{ github.event_name == 'schedule' && 'HIGH,CRITICAL' || 'CRITICAL' }}
           ignore-unfixed: true
           exit-code: 1
