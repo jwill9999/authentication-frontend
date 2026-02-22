@@ -28,9 +28,17 @@ const Dashboard = (): React.JSX.Element => {
         const data = await protectedAPI.getProfile();
         setProfile(data);
       } catch (err) {
+        const maybeErrorWithStatus = err as { status?: number } | null | undefined;
+        const isUnauthorized =
+          typeof maybeErrorWithStatus === 'object' &&
+          maybeErrorWithStatus !== null &&
+          typeof maybeErrorWithStatus.status === 'number' &&
+          maybeErrorWithStatus.status === 401;
+
         const message = getErrorMessage(err);
-        // If session expired or token reuse detected, force re-login
-        if (/401|expired|reuse/i.test(message)) {
+
+        // If session expired or token reuse detected (401), force re-login
+        if (isUnauthorized) {
           await logout();
           navigate('/login');
           return;
