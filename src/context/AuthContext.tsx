@@ -107,7 +107,7 @@ export const AuthProvider = ({
     }, REFRESH_INTERVAL_MS);
 
     return () => clearInterval(timerId);
-  }, [token, setToken]);
+  }, [token, setToken, refreshAccessTokenDetailed]);
 
   // ── Login ─────────────────────────────────────────────────────────────────
   const login = useCallback(
