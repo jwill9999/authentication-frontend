@@ -85,7 +85,7 @@ export const AuthProvider = ({
     };
 
     restoreSession();
-  }, []);
+  }, [refreshAccessToken, isUser]);
 
   // ── Proactive refresh at 4m mark to avoid a latency-inducing 401 ─────────
   useEffect(() => {
