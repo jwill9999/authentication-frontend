@@ -14,11 +14,13 @@ vi.mock('../services/api', () => ({
     googleLogin: vi.fn(),
   },
   refreshAccessToken: vi.fn(),
+  refreshAccessTokenDetailed: vi.fn(),
   setAccessToken: vi.fn(),
   getAccessToken: vi.fn(),
 }));
 
 const mockedRefresh = vi.mocked(api.refreshAccessToken);
+const mockedRefreshDetailed = vi.mocked(api.refreshAccessTokenDetailed);
 const mockedLogin = vi.mocked(api.authAPI.login);
 const mockedLogout = vi.mocked(api.authAPI.logout);
 const mockedLogoutAll = vi.mocked(api.authAPI.logoutAll);
@@ -51,6 +53,10 @@ beforeEach(() => {
   localStorage.clear();
   // Default: refresh returns null (no active session)
   mockedRefresh.mockResolvedValue(null);
+  mockedRefreshDetailed.mockResolvedValue({
+    token: null,
+    outcome: 'network_error',
+  });
 });
 
 // ─── Session restore on mount ─────────────────────────────────────────────────
@@ -219,6 +225,75 @@ describe('logoutAll', () => {
   });
 });
 
+describe('proactive refresh interval', () => {
+  it('clears session when periodic refresh reports unauthorized', async () => {
+    const setIntervalSpy = vi.spyOn(globalThis, 'setInterval');
+    mockedRefresh.mockResolvedValueOnce('tok');
+    mockedRefreshDetailed.mockResolvedValueOnce({
+      token: null,
+      outcome: 'unauthorized',
+      statusCode: 401,
+    });
+    localStorage.setItem('user', JSON.stringify({ email: 'a@b.com' }));
+
+    renderWithProvider();
+    await waitFor(() =>
+      expect(screen.getByTestId('token')).toHaveTextContent('tok'),
+    );
+
+    const refreshIntervalCall = setIntervalSpy.mock.calls.find(
+      ([, intervalMs]) => intervalMs === 4 * 60 * 1000,
+    );
+    const refreshIntervalCallback = refreshIntervalCall?.[0] as
+      | (() => Promise<void>)
+      | undefined;
+
+    expect(refreshIntervalCallback).toBeDefined();
+
+    await act(async () => {
+      await refreshIntervalCallback?.();
+    });
+
+    await waitFor(() =>
+      expect(screen.getByTestId('token')).toHaveTextContent('null'),
+    );
+    expect(localStorage.getItem('user')).toBeNull();
+    setIntervalSpy.mockRestore();
+  });
+
+  it('keeps session on periodic transient refresh failure', async () => {
+    const setIntervalSpy = vi.spyOn(globalThis, 'setInterval');
+    mockedRefresh.mockResolvedValueOnce('tok');
+    mockedRefreshDetailed.mockResolvedValueOnce({
+      token: null,
+      outcome: 'network_error',
+    });
+    localStorage.setItem('user', JSON.stringify({ email: 'a@b.com' }));
+
+    renderWithProvider();
+    await waitFor(() =>
+      expect(screen.getByTestId('token')).toHaveTextContent('tok'),
+    );
+
+    const refreshIntervalCall = setIntervalSpy.mock.calls.find(
+      ([, intervalMs]) => intervalMs === 4 * 60 * 1000,
+    );
+    const refreshIntervalCallback = refreshIntervalCall?.[0] as
+      | (() => Promise<void>)
+      | undefined;
+
+    expect(refreshIntervalCallback).toBeDefined();
+
+    await act(async () => {
+      await refreshIntervalCallback?.();
+    });
+
+    expect(screen.getByTestId('token')).toHaveTextContent('tok');
+    expect(localStorage.getItem('user')).toContain('a@b.com');
+    setIntervalSpy.mockRestore();
+  });
+});
+
 // ─── register ─────────────────────────────────────────────────────────────────
 describe('register', () => {
   it('returns success when registration succeeds', async () => {
@@ -248,6 +323,47 @@ describe('register', () => {
     await userEvent.click(screen.getByText('Register'));
     await waitFor(() => expect(result).toBeDefined());
     expect(result?.success).toBe(true);
+  });
+
+  it('hydrates session when register issues an access token', async () => {
+    const mockedRegister = vi.mocked(api.authAPI.register);
+    mockedRegister.mockResolvedValueOnce({
+      success: true,
+      user: { email: 'new@user.com', name: 'Alice' },
+    });
+    mockedGetAccessToken.mockReturnValueOnce('reg-token');
+
+    const RegConsumer = () => {
+      const { register, token, user } = useAuth();
+      return (
+        <div>
+          <span data-testid="reg-token">{token ?? 'null'}</span>
+          <span data-testid="reg-user">{user?.email ?? 'null'}</span>
+          <button
+            onClick={async () => {
+              await register('new@user.com', 'Pass1234', 'Alice');
+            }}
+          >
+            Register
+          </button>
+        </div>
+      );
+    };
+
+    render(
+      <AuthProvider>
+        <RegConsumer />
+      </AuthProvider>,
+    );
+    await waitFor(() => screen.getByText('Register'));
+
+    await userEvent.click(screen.getByText('Register'));
+
+    await waitFor(() =>
+      expect(screen.getByTestId('reg-token')).toHaveTextContent('reg-token'),
+    );
+    expect(screen.getByTestId('reg-user')).toHaveTextContent('new@user.com');
+    expect(localStorage.getItem('user')).toContain('new@user.com');
   });
 });
 

@@ -10,6 +10,7 @@ import React, {
 import {
   authAPI,
   refreshAccessToken,
+  refreshAccessTokenDetailed,
   setAccessToken,
   getAccessToken,
 } from '../services/api';
@@ -93,10 +94,11 @@ export const AuthProvider = ({
     const REFRESH_INTERVAL_MS = 4 * 60 * 1000; // 4 minutes
 
     const timerId = setInterval(async () => {
-      const newToken = await refreshAccessToken();
-      if (newToken) {
-        setTokenState(newToken);
-      } else {
+      const refreshResult = await refreshAccessTokenDetailed();
+
+      if (refreshResult.outcome === 'success' && refreshResult.token) {
+        setTokenState(refreshResult.token);
+      } else if (refreshResult.outcome === 'unauthorized') {
         // Refresh failed — clear session and let ProtectedRoute redirect
         setToken(null);
         setUser(null);
@@ -157,6 +159,21 @@ export const AuthProvider = ({
           };
         }
 
+        const inMemoryToken = getAccessToken(); // set inside authAPI.register
+        if (inMemoryToken) {
+          setTokenState(inMemoryToken);
+
+          const fallbackUser: User = {
+            email,
+            ...(name?.trim() ? { name: name.trim() } : {}),
+          };
+          const userFromResponse: User = response.user ?? fallbackUser;
+          setUser(userFromResponse);
+
+          // Store only non-sensitive public user info — no token in localStorage
+          localStorage.setItem('user', JSON.stringify(userFromResponse));
+        }
+
         return { success: true };
       } catch (error) {
         return { success: false, error: getErrorMessage(error) };
@@ -208,6 +225,7 @@ export const AuthProvider = ({
       googleLogin,
       loading,
       setToken,
+      setUser,
     ],
   );
 

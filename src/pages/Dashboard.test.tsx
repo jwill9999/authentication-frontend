@@ -117,6 +117,24 @@ describe('Dashboard', () => {
     );
   });
 
+  it('shows error and stays on dashboard when logoutAll fails', async () => {
+    mockGetProfile.mockResolvedValueOnce({});
+    const auth = renderDashboard({
+      logoutAll: vi.fn().mockRejectedValueOnce(new Error('Logout all failed')),
+    });
+
+    await waitFor(() => screen.getByText('Logout All Devices'));
+    await userEvent.click(screen.getByText('Logout All Devices'));
+
+    expect(auth.logoutAll).toHaveBeenCalledTimes(1);
+    await waitFor(() =>
+      expect(
+        screen.getByText(/Error loading profile: Logout all failed/),
+      ).toBeInTheDocument(),
+    );
+    expect(screen.queryByText('Login Page')).not.toBeInTheDocument();
+  });
+
   it('calls logout and navigates to /login on 401 profile error', async () => {
     mockGetProfile.mockRejectedValueOnce(new Error('401 Unauthorized'));
     const auth = renderDashboard();

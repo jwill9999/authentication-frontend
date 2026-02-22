@@ -14,33 +14,35 @@
      - Redirects to dashboard on success
      - Shows error messages on failure
 
-    Request body:
-    ```json
-    {
-       "email": "user@example.com",
-       "password": "Password123!"
-    }
-    ```
+   Request body:
 
-    Success response:
-    ```json
-    {
-       "success": true,
-       "message": "Login successful",
-       "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
-       "user": {
-          "id": "string",
-          "email": "user@example.com",
-          "name": "string"
-       }
-    }
-    ```
+   ```json
+   {
+     "email": "user@example.com",
+     "password": "Password123!"
+   }
+   ```
+
+   Success response:
+
+   ```json
+   {
+     "success": true,
+     "message": "Login successful",
+     "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+     "user": {
+       "id": "string",
+       "email": "user@example.com",
+       "name": "string"
+     }
+   }
+   ```
 
 2. **POST /auth/register** ✅
    - Location: `src/services/api.ts` → `authAPI.register()`
-    - Used in: `src/context/AuthContext.tsx` and `src/pages/Register.tsx`
+   - Used in: `src/context/AuthContext.tsx` and `src/pages/Register.tsx`
    - Features:
-       - Dedicated register page for first-time users
+     - Dedicated register page for first-time users
      - Sends email + password + optional name
      - Password rules: min 8 chars, 1 uppercase, 1 lowercase, 1 number
        - Handles API response contract (`success`, `message`, `error`, `token`, `user`)
@@ -73,6 +75,7 @@
 ## Configuration
 
 **Backend URL:** Set via environment variable
+
 - Default: `http://localhost:3000`
 - Override: Create `.env` file with `VITE_API_URL=your_backend_url`
 
@@ -86,6 +89,7 @@
 ## Request Flow
 
 ### Login Flow:
+
 1. User submits email/password
 2. Frontend validates format
 3. POST to `/auth/login`
@@ -94,6 +98,7 @@
 6. User redirected to /dashboard
 
 ### Register Flow:
+
 1. User opens `/register` from the login page link
 2. User submits email/password/(optional) name
 3. Frontend validates email and password policy
@@ -103,6 +108,7 @@
 7. User logs in for the first time with new credentials
 
 ### Google OAuth Flow:
+
 1. User clicks "Continue with Google"
 2. Redirected to `/auth/google`
 3. Backend handles Google OAuth
@@ -111,6 +117,7 @@
 6. User redirected to /dashboard
 
 ### Protected Route Flow:
+
 1. User accesses /dashboard
 2. ProtectedRoute checks for token
 3. If no token → redirect to /login
@@ -119,6 +126,13 @@
 6. Profile data displayed
 
 ## Error Handling
+
+### Response Field Convention (`message` vs `error`)
+
+- Canonical field for API responses is `message`.
+- `error` is treated as a legacy/backward-compatible alias.
+- Frontend parsing order is: `message` → `error` → local fallback string.
+- New or updated backend endpoints should return `message` for consistency.
 
 - ✅ Network errors caught and displayed
 - ✅ Invalid credentials shown to user

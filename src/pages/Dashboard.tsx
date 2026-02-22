@@ -50,8 +50,13 @@ const Dashboard = (): React.JSX.Element => {
   };
 
   const handleLogoutAll = async (): Promise<void> => {
-    await logoutAll();
-    navigate('/login');
+    try {
+      await logoutAll();
+      navigate('/login');
+    } catch (err) {
+      const message = getErrorMessage(err);
+      setError(message);
+    }
   };
 
   return (
