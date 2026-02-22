@@ -36,13 +36,13 @@ build: ## Run production build
 	npm run build
 
 audit: ## Run npm audit for production dependencies (high/critical)
-	npm run audit
+	npm audit --omit=dev --audit-level=high
 
 audit-all: ## Run npm audit for all dependencies (high/critical)
-	npm run audit:all
+	npm audit --audit-level=high
 
 audit-fix: ## Apply npm audit fixes where available
-	npm run audit:fix
+	npm audit fix --audit-level=high
 
 docker-build: ## Build frontend image
 	$(COMPOSE) build $(SERVICE)
