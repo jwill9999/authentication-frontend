@@ -26,6 +26,11 @@ jobs:
       - name: Build frontend image
         run: docker build -t login-app-frontend:ci .
 
+      - name: Set up Trivy
+        uses: aquasecurity/setup-trivy@v0.2.1
+        with:
+          version: v0.56.1
+
       - name: Trivy scan (SARIF)
         uses: aquasecurity/trivy-action@0.28.0
         with:
@@ -45,12 +50,12 @@ jobs:
           sarif_file: trivy-results.sarif
 
       - name: Trivy policy gate (fail on configured threshold)
-        uses: aquasecurity/trivy-action@0.28.0
-        with:
-          image-ref: login-app-frontend:ci
-          format: table
-          scanners: vuln
-          vuln-type: os,library
-          severity: ${{ github.event_name == 'schedule' && 'HIGH,CRITICAL' || 'CRITICAL' }}
-          ignore-unfixed: true
-          exit-code: 1
+        run: |
+          trivy image \
+            --scanners vuln \
+            --vuln-type os,library \
+            --severity "${{ github.event_name == 'schedule' && 'HIGH,CRITICAL' || 'CRITICAL' }}" \
+            --ignore-unfixed \
+            --format table \
+            --exit-code 1 \
+            login-app-frontend:ci
