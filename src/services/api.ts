@@ -116,30 +116,35 @@ const fetchWithAuth = async (
   url: string,
   options: FetchOptions = {},
 ): Promise<Response> => {
-  const headers = new Headers(options.headers);
+  // Extract internal retry flag so it is not forwarded to fetch
+  const { _retry, ...requestOptions } = options as FetchOptions & {
+    _retry?: boolean;
+  };
+
+  const headers = new Headers(requestOptions.headers);
   if (accessToken) headers.set('Authorization', `Bearer ${accessToken}`);
 
   const response = await fetch(url, {
-    ...options,
+    ...requestOptions,
     credentials: 'include',
     headers,
   });
 
   // On 401, attempt one refresh then retry the original request
-  if (response.status === 401 && !options._retry) {
+  if (response.status === 401 && !_retry) {
     const refreshResult = await refreshAccessTokenDetailed();
     if (refreshResult.outcome !== 'success' || !refreshResult.token) {
       return response;
     }
 
-    const retryHeaders = new Headers(options.headers);
+    const retryHeaders = new Headers(requestOptions.headers);
     retryHeaders.set('Authorization', `Bearer ${refreshResult.token}`);
 
-    return fetch(url, {
-      ...options,
-      _retry: true,
-      credentials: 'include',
+    // Retry once with updated Authorization header; _retry stays internal
+    return fetchWithAuth(url, {
+      ...requestOptions,
       headers: retryHeaders,
+      _retry: true,
     } as FetchOptions);
   }
 
