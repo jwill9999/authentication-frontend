@@ -1,0 +1,304 @@
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import {
+  refreshAccessToken,
+  setAccessToken,
+  getAccessToken,
+  authAPI,
+  protectedAPI,
+} from './api';
+
+// ─── Mock fetch globally ──────────────────────────────────────────────────────
+const mockFetch = vi.fn();
+vi.stubGlobal('fetch', mockFetch);
+
+const okResponse = (body: unknown) => ({
+  ok: true,
+  status: 200,
+  json: async () => body,
+});
+
+const errorResponse = (body: unknown, status = 401) => ({
+  ok: false,
+  status,
+  json: async () => body,
+});
+
+beforeEach(() => {
+  mockFetch.mockReset();
+  setAccessToken(null);
+});
+
+// ─── refreshAccessToken ───────────────────────────────────────────────────────
+describe('refreshAccessToken', () => {
+  it('returns token and stores it in memory on success', async () => {
+    mockFetch.mockResolvedValueOnce(
+      okResponse({ success: true, token: 'new-token' }),
+    );
+    const token = await refreshAccessToken();
+    expect(token).toBe('new-token');
+    expect(getAccessToken()).toBe('new-token');
+  });
+
+  it('returns null when response is not ok', async () => {
+    mockFetch.mockResolvedValueOnce(errorResponse({ success: false }));
+    expect(await refreshAccessToken()).toBeNull();
+  });
+
+  it('returns null when response has no token field', async () => {
+    mockFetch.mockResolvedValueOnce(okResponse({ success: true }));
+    expect(await refreshAccessToken()).toBeNull();
+  });
+
+  it('returns null on network error', async () => {
+    mockFetch.mockRejectedValueOnce(new Error('Network error'));
+    expect(await refreshAccessToken()).toBeNull();
+  });
+
+  it('sends POST to /auth/refresh with credentials: include', async () => {
+    mockFetch.mockResolvedValueOnce(
+      okResponse({ success: true, token: 'tok' }),
+    );
+    await refreshAccessToken();
+    expect(mockFetch).toHaveBeenCalledWith(
+      expect.stringContaining('/auth/refresh'),
+      expect.objectContaining({ method: 'POST', credentials: 'include' }),
+    );
+  });
+
+  it('deduplicates concurrent calls — only one fetch is made', async () => {
+    let resolveRefresh!: (v: unknown) => void;
+    const pending = new Promise((res) => {
+      resolveRefresh = res;
+    });
+    mockFetch.mockReturnValueOnce(pending);
+
+    const p1 = refreshAccessToken();
+    const p2 = refreshAccessToken();
+
+    resolveRefresh(okResponse({ success: true, token: 'shared' }));
+
+    const [t1, t2] = await Promise.all([p1, p2]);
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+    expect(t1).toBe('shared');
+    expect(t2).toBe('shared');
+  });
+
+  it('resets the queue after completion so next call is fresh', async () => {
+    mockFetch
+      .mockResolvedValueOnce(okResponse({ success: true, token: 'first' }))
+      .mockResolvedValueOnce(okResponse({ success: true, token: 'second' }));
+
+    await refreshAccessToken();
+    const t2 = await refreshAccessToken();
+    expect(mockFetch).toHaveBeenCalledTimes(2);
+    expect(t2).toBe('second');
+  });
+});
+
+// ─── authAPI.login ────────────────────────────────────────────────────────────
+describe('authAPI.login', () => {
+  it('stores access token in memory on success', async () => {
+    mockFetch.mockResolvedValueOnce(
+      okResponse({ success: true, token: 'login-tok' }),
+    );
+    await authAPI.login('a@b.com', 'pass');
+    expect(getAccessToken()).toBe('login-tok');
+  });
+
+  it('sends POST /auth/login with credentials: include', async () => {
+    mockFetch.mockResolvedValueOnce(
+      okResponse({ success: true, token: 'tok' }),
+    );
+    await authAPI.login('a@b.com', 'pass');
+    expect(mockFetch).toHaveBeenCalledWith(
+      expect.stringContaining('/auth/login'),
+      expect.objectContaining({ method: 'POST', credentials: 'include' }),
+    );
+  });
+
+  it('throws the server error message on failure', async () => {
+    mockFetch.mockResolvedValueOnce(
+      errorResponse({ success: false, message: 'Invalid credentials' }, 401),
+    );
+    await expect(authAPI.login('a@b.com', 'wrong')).rejects.toThrow(
+      'Invalid credentials',
+    );
+  });
+
+  it('throws fallback message when server gives no message', async () => {
+    mockFetch.mockResolvedValueOnce(errorResponse({}, 500));
+    await expect(authAPI.login('a@b.com', 'pass')).rejects.toThrow(
+      'Login failed',
+    );
+  });
+
+  it('does NOT write the token to localStorage', async () => {
+    const spy = vi.spyOn(Storage.prototype, 'setItem');
+    mockFetch.mockResolvedValueOnce(
+      okResponse({ success: true, token: 'tok' }),
+    );
+    await authAPI.login('a@b.com', 'pass');
+    expect(spy).not.toHaveBeenCalledWith('token', expect.anything());
+    spy.mockRestore();
+  });
+});
+
+// ─── authAPI.register ─────────────────────────────────────────────────────────
+describe('authAPI.register', () => {
+  it('returns success response', async () => {
+    mockFetch.mockResolvedValueOnce(okResponse({ success: true }));
+    const res = await authAPI.register('a@b.com', 'pass', 'Alice');
+    expect(res.success).toBe(true);
+  });
+
+  it('sends POST /auth/register with credentials: include', async () => {
+    mockFetch.mockResolvedValueOnce(okResponse({ success: true }));
+    await authAPI.register('a@b.com', 'pass', 'Alice');
+    expect(mockFetch).toHaveBeenCalledWith(
+      expect.stringContaining('/auth/register'),
+      expect.objectContaining({ method: 'POST', credentials: 'include' }),
+    );
+  });
+
+  it('omits name from payload if blank', async () => {
+    mockFetch.mockResolvedValueOnce(okResponse({ success: true }));
+    await authAPI.register('a@b.com', 'pass', '   ');
+    const body = JSON.parse(
+      (mockFetch.mock.calls[0] as [string, RequestInit])[1].body as string,
+    );
+    expect(body).not.toHaveProperty('name');
+  });
+
+  it('throws the server error message on failure', async () => {
+    mockFetch.mockResolvedValueOnce(
+      errorResponse({ success: false, message: 'Email taken' }, 409),
+    );
+    await expect(authAPI.register('a@b.com', 'pass', 'A')).rejects.toThrow(
+      'Email taken',
+    );
+  });
+});
+
+// ─── authAPI.logout ───────────────────────────────────────────────────────────
+describe('authAPI.logout', () => {
+  it('calls POST /auth/logout with credentials: include', async () => {
+    mockFetch.mockResolvedValueOnce(okResponse({}));
+    await authAPI.logout();
+    expect(mockFetch).toHaveBeenCalledWith(
+      expect.stringContaining('/auth/logout'),
+      expect.objectContaining({ method: 'POST', credentials: 'include' }),
+    );
+  });
+
+  it('clears the in-memory access token', async () => {
+    setAccessToken('existing');
+    mockFetch.mockResolvedValueOnce(okResponse({}));
+    await authAPI.logout();
+    expect(getAccessToken()).toBeNull();
+  });
+
+  it('sends Authorization header when token present', async () => {
+    setAccessToken('bearer-token');
+    mockFetch.mockResolvedValueOnce(okResponse({}));
+    await authAPI.logout();
+    const [, opts] = mockFetch.mock.calls[0] as [string, RequestInit];
+    expect((opts.headers as Record<string, string>)['Authorization']).toBe(
+      'Bearer bearer-token',
+    );
+  });
+});
+
+// ─── authAPI.logoutAll ────────────────────────────────────────────────────────
+describe('authAPI.logoutAll', () => {
+  it('calls POST /auth/logout-all with credentials: include', async () => {
+    mockFetch.mockResolvedValueOnce(okResponse({}));
+    await authAPI.logoutAll();
+    expect(mockFetch).toHaveBeenCalledWith(
+      expect.stringContaining('/auth/logout-all'),
+      expect.objectContaining({ method: 'POST', credentials: 'include' }),
+    );
+  });
+
+  it('clears the in-memory access token', async () => {
+    setAccessToken('existing');
+    mockFetch.mockResolvedValueOnce(okResponse({}));
+    await authAPI.logoutAll();
+    expect(getAccessToken()).toBeNull();
+  });
+});
+
+// ─── protectedAPI.getProfile ──────────────────────────────────────────────────
+describe('protectedAPI.getProfile', () => {
+  it('returns profile data on success', async () => {
+    setAccessToken('tok');
+    mockFetch.mockResolvedValueOnce(okResponse({ id: '1', email: 'a@b.com' }));
+    expect(await protectedAPI.getProfile()).toEqual({
+      id: '1',
+      email: 'a@b.com',
+    });
+  });
+
+  it('sends Authorization header containing the access token', async () => {
+    setAccessToken('my-token');
+    mockFetch.mockResolvedValueOnce(okResponse({}));
+    await protectedAPI.getProfile();
+    const [, opts] = mockFetch.mock.calls[0] as [string, RequestInit];
+    const headers = opts.headers as Headers;
+    expect(headers.get('Authorization')).toBe('Bearer my-token');
+  });
+
+  it('sends credentials: include', async () => {
+    setAccessToken('tok');
+    mockFetch.mockResolvedValueOnce(okResponse({}));
+    await protectedAPI.getProfile();
+    const [, opts] = mockFetch.mock.calls[0] as [string, RequestInit];
+    expect(opts.credentials).toBe('include');
+  });
+
+  it('auto-refreshes on 401 and retries the request', async () => {
+    setAccessToken('expired');
+    mockFetch
+      .mockResolvedValueOnce(errorResponse({}, 401)) // original → 401
+      .mockResolvedValueOnce(okResponse({ success: true, token: 'new-tok' })) // refresh
+      .mockResolvedValueOnce(okResponse({ id: '42' })); // retry
+
+    const data = await protectedAPI.getProfile();
+    expect(data).toEqual({ id: '42' });
+    expect(mockFetch).toHaveBeenCalledTimes(3);
+  });
+
+  it('throws when refresh also fails (max 1 retry)', async () => {
+    setAccessToken('expired');
+    mockFetch
+      .mockResolvedValueOnce(errorResponse({}, 401)) // original → 401
+      .mockResolvedValueOnce(errorResponse({}, 401)); // refresh → 401 (fails)
+    await expect(protectedAPI.getProfile()).rejects.toThrow(
+      'Failed to fetch profile',
+    );
+  });
+
+  it('throws when initial response is a non-401 error', async () => {
+    setAccessToken('tok');
+    mockFetch.mockResolvedValueOnce(errorResponse({}, 500));
+    await expect(protectedAPI.getProfile()).rejects.toThrow(
+      'Failed to fetch profile',
+    );
+  });
+});
+
+// ─── protectedAPI.getData ─────────────────────────────────────────────────────
+describe('protectedAPI.getData', () => {
+  it('returns data on success', async () => {
+    setAccessToken('tok');
+    mockFetch.mockResolvedValueOnce(okResponse({ items: [1, 2] }));
+    expect(await protectedAPI.getData()).toEqual({ items: [1, 2] });
+  });
+
+  it('throws on failure', async () => {
+    setAccessToken('tok');
+    mockFetch.mockResolvedValueOnce(errorResponse({}, 403));
+    await expect(protectedAPI.getData()).rejects.toThrow(
+      'Failed to fetch data',
+    );
+  });
+});
