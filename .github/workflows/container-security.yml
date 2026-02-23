@@ -38,7 +38,7 @@ jobs:
           format: sarif
           output: trivy-results.sarif
           scanners: vuln
-          pkg-types: os,library
+          vuln-type: os,library
           severity: CRITICAL,HIGH
           ignore-unfixed: true
           exit-code: 0
@@ -48,6 +48,40 @@ jobs:
         if: always()
         with:
           sarif_file: trivy-results.sarif
+
+      - name: Trivy detailed report (JSON)
+        run: |
+          trivy image \
+            --scanners vuln \
+            --pkg-types os,library \
+            --severity "HIGH,CRITICAL" \
+            --ignore-unfixed \
+            --format json \
+            --output trivy-results.json \
+            --exit-code 0 \
+            login-app-frontend:ci
+
+      - name: Trivy detailed report (table)
+        run: |
+          trivy image \
+            --scanners vuln \
+            --pkg-types os,library \
+            --severity "HIGH,CRITICAL" \
+            --ignore-unfixed \
+            --format table \
+            --exit-code 0 \
+            login-app-frontend:ci > trivy-results.txt
+
+      - name: Upload Trivy artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: trivy-scan-results
+          path: |
+            trivy-results.sarif
+            trivy-results.json
+            trivy-results.txt
+          if-no-files-found: warn
 
       - name: Trivy policy gate (fail on configured threshold)
         run: |
