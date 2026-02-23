@@ -117,7 +117,7 @@ export const AuthProvider = ({
 
         if (response.success) {
           const inMemoryToken = getAccessToken(); // set inside authAPI.login
-          if (inMemoryToken) setToken(inMemoryToken);
+          if (inMemoryToken) updateToken(inMemoryToken);
 
           const userFromResponse: User = response.user ?? { email };
           setUser(userFromResponse);
