@@ -5,11 +5,16 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import Dashboard from './Dashboard';
 import * as AuthContextModule from '../context/AuthContext';
 import * as apiModule from '../services/api';
+import { ApiHttpError } from '../services/api';
 
 vi.mock('../context/AuthContext', () => ({ useAuth: vi.fn() }));
-vi.mock('../services/api', () => ({
-  protectedAPI: { getProfile: vi.fn(), getData: vi.fn() },
-}));
+vi.mock('../services/api', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../services/api')>();
+  return {
+    ...actual,
+    protectedAPI: { getProfile: vi.fn(), getData: vi.fn() },
+  };
+});
 
 const mockUseAuth = vi.mocked(AuthContextModule.useAuth);
 const mockGetProfile = vi.mocked(apiModule.protectedAPI.getProfile);
@@ -117,8 +122,26 @@ describe('Dashboard', () => {
     );
   });
 
+  it('shows error and stays on dashboard when logoutAll fails', async () => {
+    mockGetProfile.mockResolvedValueOnce({});
+    const auth = renderDashboard({
+      logoutAll: vi.fn().mockRejectedValueOnce(new Error('Logout all failed')),
+    });
+
+    await waitFor(() => screen.getByText('Logout All Devices'));
+    await userEvent.click(screen.getByText('Logout All Devices'));
+
+    expect(auth.logoutAll).toHaveBeenCalledTimes(1);
+    await waitFor(() =>
+      expect(
+        screen.getByText(/Error loading profile: Logout all failed/),
+      ).toBeInTheDocument(),
+    );
+    expect(screen.queryByText('Login Page')).not.toBeInTheDocument();
+  });
+
   it('calls logout and navigates to /login on 401 profile error', async () => {
-    mockGetProfile.mockRejectedValueOnce(new Error('401 Unauthorized'));
+    mockGetProfile.mockRejectedValueOnce(new ApiHttpError('Unauthorized', 401));
     const auth = renderDashboard();
 
     await waitFor(() =>

@@ -1,8 +1,46 @@
-import type { AuthResponse, RefreshResponse } from '../types/auth';
+import type {
+  ApiMessageFields,
+  AuthResponse,
+  RefreshResponse,
+} from '../types/auth';
 
 const API_URL: string = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 
+const normalizeBaseUrl = (url: string): string => url.replace(/\/+$/, '');
+
+const joinUrl = (baseUrl: string, path: string): string => {
+  const normalizedPath = path.startsWith('/') ? path : `/${path}`;
+  return `${baseUrl}${normalizedPath}`;
+};
+
+const API_BASE_URL = normalizeBaseUrl(API_URL);
+const PROTECTED_API_BASE_URL = API_BASE_URL.endsWith('/api')
+  ? API_BASE_URL
+  : joinUrl(API_BASE_URL, '/api');
+
 type JsonObject = Record<string, unknown>;
+type RefreshOutcome =
+  | 'success'
+  | 'unauthorized'
+  | 'server_error'
+  | 'network_error'
+  | 'invalid_response';
+
+export interface RefreshAccessTokenResult {
+  token: string | null;
+  outcome: RefreshOutcome;
+  statusCode?: number;
+}
+
+export class ApiHttpError extends Error {
+  public readonly status: number;
+
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = 'ApiHttpError';
+    this.status = status;
+  }
+}
 
 // ─── In-memory access token (never written to localStorage) ──────────────────
 let accessToken: string | null = null;
@@ -13,7 +51,7 @@ export const setAccessToken = (token: string | null): void => {
 };
 
 // ─── Refresh queue — deduplicate concurrent 401s ──────────────────────────────
-let refreshPromise: Promise<string | null> | null = null;
+let refreshPromise: Promise<RefreshAccessTokenResult> | null = null;
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 const parseJsonSafely = async <T>(response: Response): Promise<T | null> => {
@@ -27,38 +65,75 @@ const parseJsonSafely = async <T>(response: Response): Promise<T | null> => {
 };
 
 const getApiErrorMessage = (
-  data: AuthResponse | RefreshResponse | null,
+  data: ApiMessageFields | null,
   fallbackMessage: string,
-): string => data?.message ?? data?.error ?? fallbackMessage;
+): string => {
+  // Convention: `message` is canonical; `error` is legacy fallback.
+  return data?.message ?? data?.error ?? fallbackMessage;
+};
 
 // ─── Core refresh logic ───────────────────────────────────────────────────────
-export const refreshAccessToken = (): Promise<string | null> => {
-  // Deduplicate: reuse in-flight promise if one already exists
-  if (refreshPromise) return refreshPromise;
+export const refreshAccessTokenDetailed =
+  (): Promise<RefreshAccessTokenResult> => {
+    // Deduplicate: reuse in-flight promise if one already exists
+    if (refreshPromise) return refreshPromise;
 
-  refreshPromise = (async (): Promise<string | null> => {
-    try {
-      const response = await fetch(`${API_URL}/auth/refresh`, {
-        method: 'POST',
-        credentials: 'include', // send httpOnly refresh cookie
-      });
+    refreshPromise = (async (): Promise<RefreshAccessTokenResult> => {
+      try {
+        const response = await fetch(joinUrl(API_BASE_URL, '/auth/refresh'), {
+          method: 'POST',
+          credentials: 'include', // send httpOnly refresh cookie
+        });
 
-      const data = await parseJsonSafely<RefreshResponse>(response);
+        const data = await parseJsonSafely<RefreshResponse>(response);
 
-      if (!response.ok || !data?.token) {
-        return null;
+        if (!response.ok) {
+          const isUnauthorized =
+            response.status === 401 || response.status === 403;
+
+          if (isUnauthorized) {
+            // Clear any stale in-memory access token when refresh is unauthorized
+            accessToken = null;
+          }
+
+          return {
+            token: null,
+            outcome: isUnauthorized ? 'unauthorized' : 'server_error',
+            statusCode: response.status,
+          };
+        }
+
+        if (!data?.token) {
+          // Response is structurally invalid; clear any stale in-memory token
+          accessToken = null;
+          return {
+            token: null,
+            outcome: 'invalid_response',
+            statusCode: response.status,
+          };
+        }
+
+        accessToken = data.token;
+        return {
+          token: data.token,
+          outcome: 'success',
+          statusCode: response.status,
+        };
+      } catch {
+        return {
+          token: null,
+          outcome: 'network_error',
+        };
+      } finally {
+        refreshPromise = null;
       }
+    })();
 
-      accessToken = data.token;
-      return accessToken;
-    } catch {
-      return null;
-    } finally {
-      refreshPromise = null;
-    }
-  })();
+    return refreshPromise;
+  };
 
-  return refreshPromise;
+export const refreshAccessToken = (): Promise<string | null> => {
+  return refreshAccessTokenDetailed().then((result) => result.token);
 };
 
 // ─── Fetch wrapper with auto-refresh + single retry on 401 ───────────────────
@@ -70,28 +145,47 @@ const fetchWithAuth = async (
   url: string,
   options: FetchOptions = {},
 ): Promise<Response> => {
-  const headers = new Headers(options.headers);
+  // Extract internal retry flag so it is not forwarded to fetch
+  const { _retry, ...requestOptions } = options as FetchOptions & {
+    _retry?: boolean;
+  };
+
+  const headers = new Headers(requestOptions.headers);
   if (accessToken) headers.set('Authorization', `Bearer ${accessToken}`);
 
   const response = await fetch(url, {
-    ...options,
+    ...requestOptions,
     credentials: 'include',
     headers,
   });
 
   // On 401, attempt one refresh then retry the original request
-  if (response.status === 401 && !options._retry) {
-    const newToken = await refreshAccessToken();
-    if (!newToken) return response; // refresh failed — caller handles redirect
+  if (response.status === 401 && !_retry) {
+    const refreshResult = await refreshAccessTokenDetailed();
+    if (refreshResult.outcome !== 'success' || !refreshResult.token) {
+      // If refresh is unauthorized, clear the in-memory access token so callers can react
+      if (refreshResult.outcome === 'unauthorized') {
+        accessToken = null;
+      }
+      return response;
+    }
 
-    const retryHeaders = new Headers(options.headers);
-    retryHeaders.set('Authorization', `Bearer ${newToken}`);
+    // Best-effort cleanup: the original 401 response will not be consumed
+    // because we are about to retry the request.
+    try {
+      await response.body?.cancel();
+    } catch {
+      // Ignore cancellation failures and continue with retry.
+    }
 
-    return fetch(url, {
-      ...options,
-      _retry: true,
-      credentials: 'include',
+    const retryHeaders = new Headers(requestOptions.headers);
+    retryHeaders.set('Authorization', `Bearer ${refreshResult.token}`);
+
+    // Retry once with updated Authorization header; _retry stays internal
+    return fetchWithAuth(url, {
+      ...requestOptions,
       headers: retryHeaders,
+      _retry: true,
     } as FetchOptions);
   }
 
@@ -101,7 +195,7 @@ const fetchWithAuth = async (
 // ─── Auth API ─────────────────────────────────────────────────────────────────
 export const authAPI = {
   login: async (email: string, password: string): Promise<AuthResponse> => {
-    const response = await fetch(`${API_URL}/auth/login`, {
+    const response = await fetch(joinUrl(API_BASE_URL, '/auth/login'), {
       method: 'POST',
       credentials: 'include', // receive httpOnly refresh cookie
       headers: { 'Content-Type': 'application/json' },
@@ -131,7 +225,7 @@ export const authAPI = {
       ...(name?.trim() ? { name: name.trim() } : {}),
     };
 
-    const response = await fetch(`${API_URL}/auth/register`, {
+    const response = await fetch(joinUrl(API_BASE_URL, '/auth/register'), {
       method: 'POST',
       credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
@@ -151,44 +245,73 @@ export const authAPI = {
   },
 
   googleLogin: (): void => {
-    globalThis.location.href = `${API_URL}/auth/google`;
+    globalThis.location.href = joinUrl(API_BASE_URL, '/auth/google');
   },
 
   logout: async (): Promise<void> => {
-    await fetch(`${API_URL}/auth/logout`, {
-      method: 'POST',
-      credentials: 'include', // must send cookie so server can revoke session
-      headers: accessToken
-        ? { Authorization: `Bearer ${accessToken}` }
-        : undefined,
-    });
-    accessToken = null;
+    try {
+      await fetch(joinUrl(API_BASE_URL, '/auth/logout'), {
+        method: 'POST',
+        credentials: 'include', // must send cookie so server can revoke session
+        headers: accessToken
+          ? { Authorization: `Bearer ${accessToken}` }
+          : undefined,
+      });
+    } catch (error) {
+      console.error('Failed to revoke server session during logout', error);
+    } finally {
+      accessToken = null;
+    }
   },
 
   logoutAll: async (): Promise<void> => {
-    await fetch(`${API_URL}/auth/logout-all`, {
-      method: 'POST',
-      credentials: 'include',
-      headers: accessToken
-        ? { Authorization: `Bearer ${accessToken}` }
-        : undefined,
-    });
-    accessToken = null;
+    try {
+      await fetch(joinUrl(API_BASE_URL, '/auth/logout-all'), {
+        method: 'POST',
+        credentials: 'include',
+        headers: accessToken
+          ? { Authorization: `Bearer ${accessToken}` }
+          : undefined,
+      });
+    } catch (error) {
+      console.error(
+        'Failed to revoke server sessions during logout-all',
+        error,
+      );
+    } finally {
+      accessToken = null;
+    }
   },
 };
 
 // ─── Protected API ────────────────────────────────────────────────────────────
 export const protectedAPI = {
   getProfile: async (): Promise<JsonObject> => {
-    const response = await fetchWithAuth(`${API_URL}/api/profile`);
-    if (!response.ok) throw new Error('Failed to fetch profile');
+    const response = await fetchWithAuth(
+      joinUrl(PROTECTED_API_BASE_URL, '/profile'),
+    );
+    if (!response.ok) {
+      const errorData = await parseJsonSafely<ApiMessageFields>(response);
+      throw new ApiHttpError(
+        getApiErrorMessage(errorData, 'Failed to fetch profile'),
+        response.status,
+      );
+    }
     const data = await parseJsonSafely<JsonObject>(response);
     return data ?? {};
   },
 
   getData: async (): Promise<JsonObject> => {
-    const response = await fetchWithAuth(`${API_URL}/api/data`);
-    if (!response.ok) throw new Error('Failed to fetch data');
+    const response = await fetchWithAuth(
+      joinUrl(PROTECTED_API_BASE_URL, '/data'),
+    );
+    if (!response.ok) {
+      const errorData = await parseJsonSafely<ApiMessageFields>(response);
+      throw new ApiHttpError(
+        getApiErrorMessage(errorData, 'Failed to fetch data'),
+        response.status,
+      );
+    }
     const data = await parseJsonSafely<JsonObject>(response);
     return data ?? {};
   },

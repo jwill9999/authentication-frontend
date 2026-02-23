@@ -1,9 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import {
   refreshAccessToken,
+  refreshAccessTokenDetailed,
   setAccessToken,
   getAccessToken,
   authAPI,
+  ApiHttpError,
   protectedAPI,
 } from './api';
 
@@ -92,6 +94,41 @@ describe('refreshAccessToken', () => {
     const t2 = await refreshAccessToken();
     expect(mockFetch).toHaveBeenCalledTimes(2);
     expect(t2).toBe('second');
+  });
+
+  it('returns detailed unauthorized outcome when refresh token is invalid/expired', async () => {
+    mockFetch.mockResolvedValueOnce(errorResponse({ success: false }, 401));
+    await expect(refreshAccessTokenDetailed()).resolves.toMatchObject({
+      token: null,
+      outcome: 'unauthorized',
+      statusCode: 401,
+    });
+  });
+
+  it('returns detailed server_error outcome for non-auth server failures', async () => {
+    mockFetch.mockResolvedValueOnce(errorResponse({ success: false }, 500));
+    await expect(refreshAccessTokenDetailed()).resolves.toMatchObject({
+      token: null,
+      outcome: 'server_error',
+      statusCode: 500,
+    });
+  });
+
+  it('returns detailed network_error outcome on fetch rejection', async () => {
+    mockFetch.mockRejectedValueOnce(new Error('Network error'));
+    await expect(refreshAccessTokenDetailed()).resolves.toMatchObject({
+      token: null,
+      outcome: 'network_error',
+    });
+  });
+
+  it('returns detailed invalid_response outcome when token is missing', async () => {
+    mockFetch.mockResolvedValueOnce(okResponse({ success: true }));
+    await expect(refreshAccessTokenDetailed()).resolves.toMatchObject({
+      token: null,
+      outcome: 'invalid_response',
+      statusCode: 200,
+    });
   });
 });
 
@@ -206,6 +243,23 @@ describe('authAPI.logout', () => {
       'Bearer bearer-token',
     );
   });
+
+  it('does not throw on network error and still clears token', async () => {
+    const consoleErrorSpy = vi
+      .spyOn(console, 'error')
+      .mockImplementation(() => {});
+    setAccessToken('existing');
+    mockFetch.mockRejectedValueOnce(new Error('Network error'));
+
+    await expect(authAPI.logout()).resolves.toBeUndefined();
+    expect(getAccessToken()).toBeNull();
+    expect(consoleErrorSpy).toHaveBeenCalledWith(
+      'Failed to revoke server session during logout',
+      expect.any(Error),
+    );
+
+    consoleErrorSpy.mockRestore();
+  });
 });
 
 // ─── authAPI.logoutAll ────────────────────────────────────────────────────────
@@ -224,6 +278,23 @@ describe('authAPI.logoutAll', () => {
     mockFetch.mockResolvedValueOnce(okResponse({}));
     await authAPI.logoutAll();
     expect(getAccessToken()).toBeNull();
+  });
+
+  it('does not throw on network error and still clears token', async () => {
+    const consoleErrorSpy = vi
+      .spyOn(console, 'error')
+      .mockImplementation(() => {});
+    setAccessToken('existing');
+    mockFetch.mockRejectedValueOnce(new Error('Network error'));
+
+    await expect(authAPI.logoutAll()).resolves.toBeUndefined();
+    expect(getAccessToken()).toBeNull();
+    expect(consoleErrorSpy).toHaveBeenCalledWith(
+      'Failed to revoke server sessions during logout-all',
+      expect.any(Error),
+    );
+
+    consoleErrorSpy.mockRestore();
   });
 });
 
@@ -267,22 +338,63 @@ describe('protectedAPI.getProfile', () => {
     expect(mockFetch).toHaveBeenCalledTimes(3);
   });
 
+  it('cancels original 401 response body before retrying after refresh', async () => {
+    setAccessToken('expired');
+
+    const cancelBody = vi.fn().mockResolvedValue(undefined);
+    const unauthorizedResponse = {
+      ok: false,
+      status: 401,
+      json: async () => ({}),
+      body: {
+        cancel: cancelBody,
+      },
+    };
+
+    mockFetch
+      .mockResolvedValueOnce(unauthorizedResponse) // original → 401
+      .mockResolvedValueOnce(okResponse({ success: true, token: 'new-tok' })) // refresh
+      .mockResolvedValueOnce(okResponse({ id: '42' })); // retry
+
+    const data = await protectedAPI.getProfile();
+
+    expect(data).toEqual({ id: '42' });
+    expect(cancelBody).toHaveBeenCalledTimes(1);
+    const cancelOrder = cancelBody.mock.invocationCallOrder[0];
+    const retryFetchOrder = mockFetch.mock.invocationCallOrder[2];
+
+    expect(cancelOrder).toBeDefined();
+    expect(retryFetchOrder).toBeDefined();
+
+    if (cancelOrder === undefined || retryFetchOrder === undefined) {
+      throw new Error('Expected call-order entries for cancel and retry calls');
+    }
+
+    expect(cancelOrder).toBeLessThan(retryFetchOrder);
+  });
+
   it('throws when refresh also fails (max 1 retry)', async () => {
     setAccessToken('expired');
     mockFetch
       .mockResolvedValueOnce(errorResponse({}, 401)) // original → 401
       .mockResolvedValueOnce(errorResponse({}, 401)); // refresh → 401 (fails)
-    await expect(protectedAPI.getProfile()).rejects.toThrow(
-      'Failed to fetch profile',
-    );
+    const error = await protectedAPI.getProfile().catch((err) => err);
+    expect(error).toBeInstanceOf(ApiHttpError);
+    expect(error).toMatchObject({
+      message: 'Failed to fetch profile',
+      status: 401,
+    });
   });
 
-  it('throws when initial response is a non-401 error', async () => {
+  it('throws when initial response is a non-401 error and preserves status', async () => {
     setAccessToken('tok');
     mockFetch.mockResolvedValueOnce(errorResponse({}, 500));
-    await expect(protectedAPI.getProfile()).rejects.toThrow(
-      'Failed to fetch profile',
-    );
+    const error = await protectedAPI.getProfile().catch((err) => err);
+    expect(error).toBeInstanceOf(ApiHttpError);
+    expect(error).toMatchObject({
+      message: 'Failed to fetch profile',
+      status: 500,
+    });
   });
 });
 
@@ -294,11 +406,35 @@ describe('protectedAPI.getData', () => {
     expect(await protectedAPI.getData()).toEqual({ items: [1, 2] });
   });
 
-  it('throws on failure', async () => {
+  it('throws on failure and preserves status', async () => {
     setAccessToken('tok');
     mockFetch.mockResolvedValueOnce(errorResponse({}, 403));
-    await expect(protectedAPI.getData()).rejects.toThrow(
-      'Failed to fetch data',
+    const error = await protectedAPI.getData().catch((err) => err);
+    expect(error).toBeInstanceOf(ApiHttpError);
+    expect(error).toMatchObject({
+      message: 'Failed to fetch data',
+      status: 403,
+    });
+  });
+
+  it('uses a single /api prefix for protected calls when VITE_API_URL is /api', async () => {
+    vi.resetModules();
+    vi.stubEnv('VITE_API_URL', '/api');
+
+    const { protectedAPI: proxyProtectedAPI, setAccessToken: setProxyToken } =
+      await import('./api');
+
+    setProxyToken('tok');
+    mockFetch.mockResolvedValueOnce(okResponse({ items: [] }));
+
+    await proxyProtectedAPI.getData();
+
+    expect(mockFetch).toHaveBeenCalledWith(
+      '/api/data',
+      expect.objectContaining({ credentials: 'include' }),
     );
+
+    vi.unstubAllEnvs();
+    vi.resetModules();
   });
 });

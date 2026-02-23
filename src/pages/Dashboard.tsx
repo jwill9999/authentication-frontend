@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
-import { protectedAPI } from '../services/api';
+import { ApiHttpError, protectedAPI } from '../services/api';
 import './Dashboard.css';
 
 type ProfileData = Record<string, unknown>;
@@ -28,14 +28,13 @@ const Dashboard = (): React.JSX.Element => {
         const data = await protectedAPI.getProfile();
         setProfile(data);
       } catch (err) {
-        const message = getErrorMessage(err);
-        // If session expired or token reuse detected, force re-login
-        if (/401|expired|reuse/i.test(message)) {
+        // If session expired or token reuse detected (401), force re-login
+        if (err instanceof ApiHttpError && err.status === 401) {
           await logout();
           navigate('/login');
           return;
         }
-        setError(message);
+        setError(getErrorMessage(err));
       } finally {
         setLoading(false);
       }
@@ -45,24 +44,33 @@ const Dashboard = (): React.JSX.Element => {
   }, [logout, navigate]);
 
   const handleLogout = async (): Promise<void> => {
-    await logout();
-    navigate('/login');
+    try {
+      await logout();
+      navigate('/login');
+    } catch (err) {
+      const message = getErrorMessage(err);
+      setError(message);
+    }
   };
 
   const handleLogoutAll = async (): Promise<void> => {
-    await logoutAll();
-    navigate('/login');
+    try {
+      await logoutAll();
+      navigate('/login');
+    } catch (err) {
+      const message = getErrorMessage(err);
+      setError(message);
+    }
   };
 
   return (
     <div className="dashboard-container">
       <nav className="navbar">
         <h2>My Dashboard</h2>
-        <div style={{ display: 'flex', gap: '10px' }}>
+        <div className="navbar-actions">
           <button
             onClick={handleLogoutAll}
-            className="logout-button"
-            style={{ background: '#764ba2', color: 'white' }}
+            className="logout-button logout-all-button"
           >
             Logout All Devices
           </button>
