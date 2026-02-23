@@ -97,7 +97,7 @@ export const AuthProvider = ({
       const refreshResult = await refreshAccessTokenDetailed();
 
       if (refreshResult.outcome === 'success' && refreshResult.token) {
-        setToken(refreshResult.token);
+        updateToken(refreshResult.token);
       } else if (refreshResult.outcome === 'unauthorized') {
         // Refresh failed — clear session and let ProtectedRoute redirect
         updateToken(null);
