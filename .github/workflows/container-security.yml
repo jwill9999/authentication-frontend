@@ -67,7 +67,7 @@ jobs:
         run: |
           trivy image \
             --scanners vuln \
-            --pkg-types os,library \
+            --vuln-type os,library \
             --severity "HIGH,CRITICAL" \
             --ignore-unfixed \
             --format table \

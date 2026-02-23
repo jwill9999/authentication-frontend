@@ -1,7 +1,6 @@
 import React, { useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { setAccessToken } from '../services/api';
 import type { User } from '../types/auth';
 
 const isOAuthUser = (value: unknown): value is User => {
@@ -24,7 +23,6 @@ const GoogleCallback = (): React.JSX.Element => {
 
     if (token) {
       // Store access token in memory only — refresh cookie is set by the server
-      setAccessToken(token);
       setToken(token);
 
       if (userParam) {

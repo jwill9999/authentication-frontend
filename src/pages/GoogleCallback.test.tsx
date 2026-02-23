@@ -3,13 +3,10 @@ import { render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import GoogleCallback from './GoogleCallback';
 import * as AuthContextModule from '../context/AuthContext';
-import * as apiModule from '../services/api';
 
 vi.mock('../context/AuthContext', () => ({ useAuth: vi.fn() }));
-vi.mock('../services/api', () => ({ setAccessToken: vi.fn() }));
 
 const mockUseAuth = vi.mocked(AuthContextModule.useAuth);
-const mockSetAccessToken = vi.mocked(apiModule.setAccessToken);
 
 const makeAuth = () => ({
   user: null,
@@ -67,7 +64,6 @@ describe('GoogleCallback', () => {
     await waitFor(() =>
       expect(screen.getByText('Dashboard')).toBeInTheDocument(),
     );
-    expect(mockSetAccessToken).toHaveBeenCalledWith('oauth-token');
     expect(auth.setToken).toHaveBeenCalledWith('oauth-token');
     expect(localStorage.getItem('token')).toBeNull();
   });

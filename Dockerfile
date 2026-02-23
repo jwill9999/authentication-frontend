@@ -1,13 +1,14 @@
 # ── Stage 1: Build ────────────────────────────────────────────────────────────
-FROM node:22-alpine AS builder
+FROM node:22.13-alpine AS builder
 
 WORKDIR /app
 
 # Copy package files first for better layer caching
 COPY package*.json ./
 
-# Install all dependencies (including devDependencies needed for build)
-RUN npm ci
+# Pull latest patched Alpine packages and install dependencies
+RUN apk update && apk upgrade --no-cache \
+	&& npm ci --omit=dev
 
 # VITE_API_URL is baked into the bundle at build time by Vite.
 # Pass at build time: docker build --build-arg VITE_API_URL=https://api.example.com
@@ -19,15 +20,13 @@ COPY . .
 RUN npm run build
 
 # ── Stage 2: Serve ────────────────────────────────────────────────────────────
-FROM nginxinc/nginx-unprivileged:1.27-alpine AS runner
+FROM nginxinc/nginx-unprivileged:1.27.5-alpine AS runner
 
 USER root
 
 # Pull latest patched Alpine packages in the runtime image
-RUN apk update && apk upgrade --no-cache
-
-# Remove default nginx config
-RUN rm /etc/nginx/conf.d/default.conf
+RUN apk update && apk upgrade --no-cache \
+	&& rm /etc/nginx/conf.d/default.conf
 
 # Copy built assets from builder stage
 COPY --from=builder /app/dist /usr/share/nginx/html
