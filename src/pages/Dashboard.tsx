@@ -44,8 +44,13 @@ const Dashboard = (): React.JSX.Element => {
   }, [logout, navigate]);
 
   const handleLogout = async (): Promise<void> => {
-    await logout();
-    navigate('/login');
+    try {
+      await logout();
+      navigate('/login');
+    } catch (err) {
+      const message = getErrorMessage(err);
+      setError(message);
+    }
   };
 
   const handleLogoutAll = async (): Promise<void> => {
