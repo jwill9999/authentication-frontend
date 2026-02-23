@@ -71,7 +71,7 @@ Detailed, retrieval-friendly API documentation lives in:
 
 - Login: validate → authenticate → persist session → redirect dashboard
 - Register: validate → create account → redirect login
-- Google OAuth: redirect to backend → callback token capture → persist session
+- Google OAuth: redirect to backend → callback refresh-cookie session restore → persist session
 - Protected routes: require token presence; user profile may hydrate lazily
 
 ## Notes

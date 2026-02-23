@@ -19,8 +19,9 @@
 
 1. User clicks Google auth button
 2. Redirect to backend `/auth/google`
-3. Callback returns to `/auth/google/callback?token=...`
-4. Token loaded into in-memory auth state (user profile optionally persisted), then redirect to dashboard
+3. Backend completes OAuth handshake and sets refresh session cookie (httpOnly)
+4. Frontend callback route (`/auth/google/callback`) restores access token via `POST /auth/refresh`
+5. Frontend optionally hydrates user profile via protected API, then redirects to dashboard
 
 ## Logout
 

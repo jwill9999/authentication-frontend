@@ -13,9 +13,10 @@
 - Verify localStorage contains only non-sensitive user profile (`user`)
 - Verify `ProtectedRoute` token guard behavior
 
-### 3) Google callback token missing
+### 3) Google callback login fails
 
-- Confirm backend callback includes `token` query param
-- Confirm frontend callback route is correct
+- Confirm backend OAuth callback sets refresh cookie (httpOnly) before redirecting to frontend callback route
+- Confirm frontend callback route (`/auth/google/callback`) can call `POST /auth/refresh` successfully
+- Confirm frontend and backend origins/cookie attributes (`Secure`, `SameSite`, domain/path) are compatible for your environment
 
 Last Updated: 2026-02-23

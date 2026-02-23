@@ -3,10 +3,21 @@ import { render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import GoogleCallback from './GoogleCallback';
 import * as AuthContextModule from '../context/AuthContext';
+import * as ApiModule from '../services/api';
 
 vi.mock('../context/AuthContext', () => ({ useAuth: vi.fn() }));
+vi.mock('../services/api', () => ({
+  refreshAccessTokenDetailed: vi.fn(),
+  protectedAPI: {
+    getProfile: vi.fn(),
+  },
+}));
 
 const mockUseAuth = vi.mocked(AuthContextModule.useAuth);
+const mockRefreshAccessTokenDetailed = vi.mocked(
+  ApiModule.refreshAccessTokenDetailed,
+);
+const mockGetProfile = vi.mocked(ApiModule.protectedAPI.getProfile);
 
 const makeAuth = () => ({
   user: null,
@@ -39,6 +50,16 @@ const renderCallback = (search: string) => {
 beforeEach(() => {
   vi.clearAllMocks();
   localStorage.clear();
+
+  mockRefreshAccessTokenDetailed.mockResolvedValue({
+    token: 'oauth-token',
+    outcome: 'success',
+    statusCode: 200,
+  });
+  mockGetProfile.mockResolvedValue({
+    email: 'oauth@test.com',
+    name: 'OAuth User',
+  });
 });
 
 describe('GoogleCallback', () => {
@@ -47,7 +68,7 @@ describe('GoogleCallback', () => {
     const auth = makeAuth();
     mockUseAuth.mockReturnValue(auth);
     render(
-      <MemoryRouter initialEntries={['/auth/google/callback?token=tok']}>
+      <MemoryRouter initialEntries={['/auth/google/callback']}>
         <Routes>
           <Route path="/auth/google/callback" element={<GoogleCallback />} />
           <Route path="/dashboard" element={<div>Dashboard</div>} />
@@ -59,8 +80,8 @@ describe('GoogleCallback', () => {
     expect(document.body).toBeTruthy();
   });
 
-  it('stores the access token in memory (not localStorage) and navigates to dashboard', async () => {
-    const auth = renderCallback('?token=oauth-token');
+  it('restores session via refresh cookie and navigates to dashboard', async () => {
+    const auth = renderCallback('');
     await waitFor(() =>
       expect(screen.getByText('Dashboard')).toBeInTheDocument(),
     );
@@ -68,11 +89,10 @@ describe('GoogleCallback', () => {
     expect(localStorage.getItem('token')).toBeNull();
   });
 
-  it('parses and stores user info from query param', async () => {
+  it('hydrates and stores user info from profile endpoint', async () => {
     const user = { email: 'oauth@test.com', name: 'OAuth User' };
-    const auth = renderCallback(
-      `?token=tok&user=${encodeURIComponent(JSON.stringify(user))}`,
-    );
+    mockGetProfile.mockResolvedValueOnce(user);
+    const auth = renderCallback('');
     await waitFor(() =>
       expect(screen.getByText('Dashboard')).toBeInTheDocument(),
     );
@@ -80,23 +100,37 @@ describe('GoogleCallback', () => {
     expect(localStorage.getItem('user')).toContain('oauth@test.com');
   });
 
-  it('does not call setUser for invalid user JSON', async () => {
-    const auth = renderCallback('?token=tok&user=not-valid-json{');
+  it('does not call setUser when profile shape is invalid', async () => {
+    mockGetProfile.mockResolvedValueOnce({ id: '1' });
+    const auth = renderCallback('');
     await waitFor(() =>
       expect(screen.getByText('Dashboard')).toBeInTheDocument(),
     );
     expect(auth.setUser).not.toHaveBeenCalled();
   });
 
-  it('navigates to /login when no token is present', async () => {
+  it('navigates to /login when refresh fails', async () => {
+    mockRefreshAccessTokenDetailed.mockResolvedValueOnce({
+      token: null,
+      outcome: 'unauthorized',
+      statusCode: 401,
+    });
     renderCallback('');
     await waitFor(() =>
       expect(screen.getByText('Login Page')).toBeInTheDocument(),
     );
   });
 
+  it('navigates to /login when callback contains oauth error', async () => {
+    renderCallback('?error=access_denied');
+    await waitFor(() =>
+      expect(screen.getByText('Login Page')).toBeInTheDocument(),
+    );
+    expect(mockRefreshAccessTokenDetailed).not.toHaveBeenCalled();
+  });
+
   it('does NOT write access token to localStorage', async () => {
-    renderCallback('?token=secret-token');
+    renderCallback('');
     await waitFor(() =>
       expect(screen.getByText('Dashboard')).toBeInTheDocument(),
     );

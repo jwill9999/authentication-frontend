@@ -2,6 +2,7 @@ import React, { useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import type { User } from '../types/auth';
+import { protectedAPI, refreshAccessTokenDetailed } from '../services/api';
 
 const isOAuthUser = (value: unknown): value is User => {
   if (typeof value !== 'object' || value === null) {
@@ -18,31 +19,48 @@ const GoogleCallback = (): React.JSX.Element => {
   const { setToken, setUser } = useAuth();
 
   useEffect(() => {
-    const token = searchParams.get('token');
-    const userParam = searchParams.get('user');
+    const restoreGoogleSession = async (): Promise<void> => {
+      const oauthError = searchParams.get('error');
 
-    if (token) {
-      // Store access token in memory only — refresh cookie is set by the server
-      setToken(token);
+      if (oauthError) {
+        navigate('/login', {
+          replace: true,
+          state: { error: 'Google authentication failed' },
+        });
+        return;
+      }
 
-      if (userParam) {
-        try {
-          const parsedUser: unknown = JSON.parse(decodeURIComponent(userParam));
+      const refreshResult = await refreshAccessTokenDetailed();
 
-          if (isOAuthUser(parsedUser)) {
-            // Only non-sensitive public user info goes to localStorage
-            localStorage.setItem('user', JSON.stringify(parsedUser));
-            setUser(parsedUser);
-          }
-        } catch {
+      if (refreshResult.outcome !== 'success' || !refreshResult.token) {
+        navigate('/login', {
+          replace: true,
+          state: { error: 'Google authentication failed' },
+        });
+        return;
+      }
+
+      // Store access token in memory only — refresh cookie is set by the server.
+      setToken(refreshResult.token);
+
+      try {
+        const profile = await protectedAPI.getProfile();
+        if (isOAuthUser(profile)) {
+          // Only non-sensitive public user info goes to localStorage.
+          localStorage.setItem('user', JSON.stringify(profile));
+          setUser(profile);
+        } else {
           localStorage.removeItem('user');
         }
+      } catch {
+        // Profile hydration is best-effort; token is enough to complete auth flow.
+        localStorage.removeItem('user');
       }
 
       navigate('/dashboard', { replace: true });
-    } else {
-      navigate('/login', { state: { error: 'Google authentication failed' } });
-    }
+    };
+
+    void restoreGoogleSession();
   }, [navigate, searchParams, setToken, setUser]);
 
   return (
