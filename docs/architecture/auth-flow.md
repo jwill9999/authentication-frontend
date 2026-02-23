@@ -19,8 +19,8 @@
 
 1. User clicks Google auth button
 2. Redirect to backend `/auth/google`
-3. Callback returns to `/auth/google/callback?token=...`
-4. Token loaded into in-memory auth state (user profile optionally persisted), then redirect to dashboard
+3. Backend handles Google callback at `/auth/google/callback`, creates a session and sets an `HttpOnly`, `Secure` cookie (or returns a short-lived one-time code for the frontend to exchange via `POST`)
+4. Frontend redirects to `/dashboard` without any access token in the URL; access is based on the server-managed session or the exchanged token stored outside of query parameters
 
 ## Logout
 
