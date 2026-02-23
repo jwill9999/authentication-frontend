@@ -67,11 +67,10 @@ const Dashboard = (): React.JSX.Element => {
     <div className="dashboard-container">
       <nav className="navbar">
         <h2>My Dashboard</h2>
-        <div style={{ display: 'flex', gap: '10px' }}>
+        <div className="navbar-actions">
           <button
             onClick={handleLogoutAll}
-            className="logout-button"
-            style={{ background: '#764ba2', color: 'white' }}
+            className="logout-button logout-all-button"
           >
             Logout All Devices
           </button>
