@@ -56,10 +56,10 @@ Detailed, retrieval-friendly API documentation lives in:
 
 ## Session Strategy
 
-- Access token stored in memory only (not localStorage)
-- Non-sensitive user profile may be stored in localStorage (`user`)
-- Token included for protected API requests via in-memory auth state
-- Logout clears in-memory token and persisted user state
+- Access token stored in memory only (not localStorage); refresh token stored as an httpOnly cookie
+- Non-sensitive user profile (`user` object) may be stored in localStorage
+- Access token included for protected API requests via in-memory auth state
+- Logout clears in-memory access token and persisted user state
 
 ## Flow Summary
 
