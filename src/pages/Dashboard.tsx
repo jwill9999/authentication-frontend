@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
-import { protectedAPI } from '../services/api';
+import { ApiHttpError, protectedAPI } from '../services/api';
 import './Dashboard.css';
 
 type ProfileData = Record<string, unknown>;
@@ -15,7 +15,7 @@ const getErrorMessage = (error: unknown): string => {
 };
 
 const Dashboard = (): React.JSX.Element => {
-  const { user, token, logout } = useAuth();
+  const { user, token, logout, logoutAll } = useAuth();
   const navigate = useNavigate();
   const [profile, setProfile] = useState<ProfileData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -24,32 +24,60 @@ const Dashboard = (): React.JSX.Element => {
   useEffect(() => {
     const fetchProfile = async (): Promise<void> => {
       try {
-        const data = await protectedAPI.getProfile(token!);
+        // No token argument needed — fetchWithAuth handles Authorization internally
+        const data = await protectedAPI.getProfile();
         setProfile(data);
       } catch (err) {
+        // If session expired or token reuse detected (401), force re-login
+        if (err instanceof ApiHttpError && err.status === 401) {
+          await logout();
+          navigate('/login');
+          return;
+        }
         setError(getErrorMessage(err));
       } finally {
         setLoading(false);
       }
     };
 
-    if (token) {
-      fetchProfile();
-    }
-  }, [token]);
+    fetchProfile();
+  }, [logout, navigate]);
 
-  const handleLogout = (): void => {
-    logout();
-    navigate('/login');
+  const handleLogout = async (): Promise<void> => {
+    try {
+      await logout();
+      navigate('/login');
+    } catch (err) {
+      const message = getErrorMessage(err);
+      setError(message);
+    }
+  };
+
+  const handleLogoutAll = async (): Promise<void> => {
+    try {
+      await logoutAll();
+      navigate('/login');
+    } catch (err) {
+      const message = getErrorMessage(err);
+      setError(message);
+    }
   };
 
   return (
     <div className="dashboard-container">
       <nav className="navbar">
         <h2>My Dashboard</h2>
-        <button onClick={handleLogout} className="logout-button">
-          Logout
-        </button>
+        <div className="navbar-actions">
+          <button
+            onClick={handleLogoutAll}
+            className="logout-button logout-all-button"
+          >
+            Logout All Devices
+          </button>
+          <button onClick={handleLogout} className="logout-button">
+            Logout
+          </button>
+        </div>
       </nav>
 
       <div className="dashboard-content">
@@ -79,9 +107,11 @@ const Dashboard = (): React.JSX.Element => {
               This is a protected route. Only authenticated users can access
               this page.
             </p>
-            <p>
-              <strong>JWT Token:</strong> {token?.substring(0, 20)}...
-            </p>
+            {token && (
+              <p>
+                <strong>JWT Token:</strong> {token.substring(0, 20)}...
+              </p>
+            )}
           </div>
         </div>
 

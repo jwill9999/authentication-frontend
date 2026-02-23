@@ -9,7 +9,7 @@ interface ProtectedRouteProps {
 const ProtectedRoute = ({
   children,
 }: ProtectedRouteProps): React.JSX.Element => {
-  const { user, loading } = useAuth();
+  const { token, loading } = useAuth();
 
   if (loading) {
     return (
@@ -26,7 +26,8 @@ const ProtectedRoute = ({
     );
   }
 
-  if (!user) {
+  // Require an in-memory token; user may be restored/fetched lazily
+  if (!token) {
     return <Navigate to="/login" replace />;
   }
 

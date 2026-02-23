@@ -1,12 +1,19 @@
 import React, {
   createContext,
+  useCallback,
   useContext,
   useEffect,
   useMemo,
   useState,
   type ReactNode,
 } from 'react';
-import { authAPI } from '../services/api';
+import {
+  authAPI,
+  refreshAccessToken,
+  refreshAccessTokenDetailed,
+  setAccessToken,
+  getAccessToken,
+} from '../services/api';
 import type { AuthActionResult, User } from '../types/auth';
 
 interface AuthContextValue {
@@ -19,7 +26,8 @@ interface AuthContextValue {
     password: string,
     name: string,
   ) => Promise<AuthActionResult>;
-  logout: () => void;
+  logout: () => Promise<void>;
+  logoutAll: () => Promise<void>;
   googleLogin: () => void;
   setToken: (newToken: string | null) => void;
   setUser: (newUser: User | null) => void;
@@ -32,127 +40,200 @@ interface AuthProviderProps {
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
 const getErrorMessage = (error: unknown): string => {
-  if (error instanceof Error) {
-    return error.message;
-  }
-
+  if (error instanceof Error) return error.message;
   return 'An unexpected error occurred';
 };
 
 const isUser = (value: unknown): value is User => {
-  if (typeof value !== 'object' || value === null) {
-    return false;
-  }
-
-  const maybeUser = value as Partial<User>;
-  return typeof maybeUser.email === 'string';
+  if (typeof value !== 'object' || value === null) return false;
+  return typeof (value as Partial<User>).email === 'string';
 };
 
 export const AuthProvider = ({
   children,
 }: AuthProviderProps): React.JSX.Element => {
-  const [user, setUser] = useState<User | null>(null);
+  // Access token lives only in memory (mirrored from api.ts module variable)
   const [token, setToken] = useState<string | null>(null);
+  const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    const storedToken = localStorage.getItem('token');
-    const storedUser = localStorage.getItem('user');
-
-    if (storedToken && storedUser) {
-      // Initialization from localStorage on mount is intentional
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setToken(storedToken);
-
-      try {
-        const parsedStoredUser: unknown = JSON.parse(storedUser);
-        if (isUser(parsedStoredUser)) {
-          // eslint-disable-next-line react-hooks/set-state-in-effect
-          setUser(parsedStoredUser);
-        }
-      } catch {
-        localStorage.removeItem('user');
-      }
-    }
-
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setLoading(false);
+  const updateToken = useCallback((newToken: string | null) => {
+    setAccessToken(newToken); // keep module-level variable in sync
+    setToken(newToken);
   }, []);
 
-  const login = async (
-    email: string,
-    password: string,
-  ): Promise<AuthActionResult> => {
-    try {
-      const response = await authAPI.login(email, password);
+  // ── On mount: silent refresh to restore session from httpOnly cookie ──────
+  useEffect(() => {
+    const restoreSession = async (): Promise<void> => {
+      const newToken = await refreshAccessToken();
 
-      if (response.success && response.token) {
-        const userFromResponse: User = response.user ?? { email };
+      if (newToken) {
+        updateToken(newToken);
 
-        setToken(response.token);
-        setUser(userFromResponse);
-
-        localStorage.setItem('token', response.token);
-        localStorage.setItem('user', JSON.stringify(userFromResponse));
-
-        return { success: true };
+        const storedUser = localStorage.getItem('user');
+        if (storedUser) {
+          try {
+            const parsed: unknown = JSON.parse(storedUser);
+            if (isUser(parsed)) setUser(parsed);
+          } catch {
+            localStorage.removeItem('user');
+          }
+        }
       }
 
-      return {
-        success: false,
-        error:
-          response.error || response.message || 'Invalid response from server',
-      };
-    } catch (error) {
-      return { success: false, error: getErrorMessage(error) };
-    }
-  };
+      setLoading(false);
+    };
 
-  const register = async (
-    email: string,
-    password: string,
-    name: string,
-  ): Promise<AuthActionResult> => {
-    try {
-      const response = await authAPI.register(email, password, name);
+    restoreSession();
+  }, [updateToken]);
 
-      if (!response.success) {
+  // ── Proactive refresh at 4m mark to avoid a latency-inducing 401 ─────────
+  useEffect(() => {
+    if (!token) return;
+
+    const REFRESH_INTERVAL_MS = 4 * 60 * 1000; // 4 minutes
+
+    const timerId = setInterval(async () => {
+      const refreshResult = await refreshAccessTokenDetailed();
+
+      if (refreshResult.outcome === 'success' && refreshResult.token) {
+        updateToken(refreshResult.token);
+      } else if (refreshResult.outcome === 'unauthorized') {
+        // Refresh failed — clear session and let ProtectedRoute redirect
+        updateToken(null);
+        setUser(null);
+        localStorage.removeItem('user');
+      }
+    }, REFRESH_INTERVAL_MS);
+
+    return () => clearInterval(timerId);
+  }, [token, updateToken]);
+
+  // ── Login ─────────────────────────────────────────────────────────────────
+  const login = useCallback(
+    async (email: string, password: string): Promise<AuthActionResult> => {
+      try {
+        const response = await authAPI.login(email, password);
+
+        if (response.success) {
+          const inMemoryToken = getAccessToken(); // set inside authAPI.login
+          if (!inMemoryToken) {
+            return {
+              success: false,
+              error: 'Login failed: access token was not returned',
+            };
+          }
+
+          updateToken(inMemoryToken);
+
+          const userFromResponse: User = response.user ?? { email };
+          setUser(userFromResponse);
+
+          // Store only non-sensitive public user info — no token in localStorage
+          localStorage.setItem('user', JSON.stringify(userFromResponse));
+
+          return { success: true };
+        }
+
         return {
           success: false,
-          error: response.error || response.message || 'Registration failed',
+          error:
+            response.error ??
+            response.message ??
+            'Invalid response from server',
         };
+      } catch (error) {
+        return { success: false, error: getErrorMessage(error) };
       }
+    },
+    [updateToken],
+  );
 
-      return { success: true };
-    } catch (error) {
-      return { success: false, error: getErrorMessage(error) };
-    }
-  };
+  // ── Register ──────────────────────────────────────────────────────────────
+  const register = useCallback(
+    async (
+      email: string,
+      password: string,
+      name: string,
+    ): Promise<AuthActionResult> => {
+      try {
+        const response = await authAPI.register(email, password, name);
 
-  const logout = (): void => {
+        if (!response.success) {
+          return {
+            success: false,
+            error: response.error ?? response.message ?? 'Registration failed',
+          };
+        }
+
+        const inMemoryToken = getAccessToken(); // set inside authAPI.register
+        if (inMemoryToken) {
+          updateToken(inMemoryToken);
+
+          const fallbackUser: User = {
+            email,
+            ...(name?.trim() ? { name: name.trim() } : {}),
+          };
+          const userFromResponse: User = response.user ?? fallbackUser;
+          setUser(userFromResponse);
+
+          // Store only non-sensitive public user info — no token in localStorage
+          localStorage.setItem('user', JSON.stringify(userFromResponse));
+        }
+
+        return { success: true };
+      } catch (error) {
+        return { success: false, error: getErrorMessage(error) };
+      }
+    },
+    [updateToken],
+  );
+
+  // ── Logout ────────────────────────────────────────────────────────────────
+  const logout = useCallback(async (): Promise<void> => {
+    await authAPI.logout(); // revokes server-side session + clears httpOnly cookie
+    updateToken(null);
     setUser(null);
-    setToken(null);
-    localStorage.removeItem('token');
     localStorage.removeItem('user');
-  };
+  }, [updateToken]);
 
-  const googleLogin = (): void => {
+  // ── Logout all devices ────────────────────────────────────────────────────
+  const logoutAll = useCallback(async (): Promise<void> => {
+    await authAPI.logoutAll();
+    updateToken(null);
+    setUser(null);
+    localStorage.removeItem('user');
+  }, [updateToken]);
+
+  const googleLogin = useCallback((): void => {
     authAPI.googleLogin();
-  };
+  }, []);
 
-  const contextValue = useMemo<AuthContextValue>(
+  const contextValue: AuthContextValue = useMemo(
     () => ({
       user,
       token,
       login,
       register,
       logout,
+      logoutAll,
       googleLogin,
       loading,
-      setToken,
+      setToken: updateToken,
       setUser,
     }),
-    [googleLogin, loading, login, logout, register, token, user],
+    [
+      user,
+      token,
+      login,
+      register,
+      logout,
+      logoutAll,
+      googleLogin,
+      loading,
+      updateToken,
+      setUser,
+    ],
   );
 
   return (

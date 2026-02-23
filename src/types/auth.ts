@@ -4,10 +4,15 @@ export interface User {
   name?: string;
 }
 
-export interface AuthResponse {
-  success: boolean;
+export interface ApiMessageFields {
+  // Canonical user-facing error/message field for new backend responses
   message?: string;
+  // Legacy/backward-compatible alias used by some existing endpoints
   error?: string;
+}
+
+export interface AuthResponse extends ApiMessageFields {
+  success: boolean;
   token?: string;
   user?: User;
 }
@@ -21,4 +26,9 @@ export interface FormErrors {
   email?: string;
   password?: string;
   api?: string;
+}
+
+export interface RefreshResponse extends ApiMessageFields {
+  success: boolean;
+  token?: string;
 }
