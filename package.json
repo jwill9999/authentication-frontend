@@ -64,8 +64,7 @@
   },
   "overrides": {
     "minimatch": {
-      "version": "^10.2.1",
-      "reason": "Force minimatch >=10.2.1 to address known security issues reported by npm audit in transitive dependencies."
+      "version": "^10.2.1"
     }
   }
 }
