@@ -6,6 +6,18 @@ import type {
 
 const API_URL: string = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 
+const normalizeBaseUrl = (url: string): string => url.replace(/\/+$/, '');
+
+const joinUrl = (baseUrl: string, path: string): string => {
+  const normalizedPath = path.startsWith('/') ? path : `/${path}`;
+  return `${baseUrl}${normalizedPath}`;
+};
+
+const API_BASE_URL = normalizeBaseUrl(API_URL);
+const PROTECTED_API_BASE_URL = API_BASE_URL.endsWith('/api')
+  ? API_BASE_URL
+  : joinUrl(API_BASE_URL, '/api');
+
 type JsonObject = Record<string, unknown>;
 type RefreshOutcome =
   | 'success'
@@ -68,7 +80,7 @@ export const refreshAccessTokenDetailed =
 
     refreshPromise = (async (): Promise<RefreshAccessTokenResult> => {
       try {
-        const response = await fetch(`${API_URL}/auth/refresh`, {
+        const response = await fetch(joinUrl(API_BASE_URL, '/auth/refresh'), {
           method: 'POST',
           credentials: 'include', // send httpOnly refresh cookie
         });
@@ -183,7 +195,7 @@ const fetchWithAuth = async (
 // ─── Auth API ─────────────────────────────────────────────────────────────────
 export const authAPI = {
   login: async (email: string, password: string): Promise<AuthResponse> => {
-    const response = await fetch(`${API_URL}/auth/login`, {
+    const response = await fetch(joinUrl(API_BASE_URL, '/auth/login'), {
       method: 'POST',
       credentials: 'include', // receive httpOnly refresh cookie
       headers: { 'Content-Type': 'application/json' },
@@ -213,7 +225,7 @@ export const authAPI = {
       ...(name?.trim() ? { name: name.trim() } : {}),
     };
 
-    const response = await fetch(`${API_URL}/auth/register`, {
+    const response = await fetch(joinUrl(API_BASE_URL, '/auth/register'), {
       method: 'POST',
       credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
@@ -233,12 +245,12 @@ export const authAPI = {
   },
 
   googleLogin: (): void => {
-    globalThis.location.href = `${API_URL}/auth/google`;
+    globalThis.location.href = joinUrl(API_BASE_URL, '/auth/google');
   },
 
   logout: async (): Promise<void> => {
     try {
-      await fetch(`${API_URL}/auth/logout`, {
+      await fetch(joinUrl(API_BASE_URL, '/auth/logout'), {
         method: 'POST',
         credentials: 'include', // must send cookie so server can revoke session
         headers: accessToken
@@ -254,7 +266,7 @@ export const authAPI = {
 
   logoutAll: async (): Promise<void> => {
     try {
-      await fetch(`${API_URL}/auth/logout-all`, {
+      await fetch(joinUrl(API_BASE_URL, '/auth/logout-all'), {
         method: 'POST',
         credentials: 'include',
         headers: accessToken
@@ -275,7 +287,9 @@ export const authAPI = {
 // ─── Protected API ────────────────────────────────────────────────────────────
 export const protectedAPI = {
   getProfile: async (): Promise<JsonObject> => {
-    const response = await fetchWithAuth(`${API_URL}/api/profile`);
+    const response = await fetchWithAuth(
+      joinUrl(PROTECTED_API_BASE_URL, '/profile'),
+    );
     if (!response.ok) {
       const errorData = await parseJsonSafely<ApiMessageFields>(response);
       throw new ApiHttpError(
@@ -288,7 +302,9 @@ export const protectedAPI = {
   },
 
   getData: async (): Promise<JsonObject> => {
-    const response = await fetchWithAuth(`${API_URL}/api/data`);
+    const response = await fetchWithAuth(
+      joinUrl(PROTECTED_API_BASE_URL, '/data'),
+    );
     if (!response.ok) {
       const errorData = await parseJsonSafely<ApiMessageFields>(response);
       throw new ApiHttpError(

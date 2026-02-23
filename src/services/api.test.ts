@@ -416,4 +416,25 @@ describe('protectedAPI.getData', () => {
       status: 403,
     });
   });
+
+  it('uses a single /api prefix for protected calls when VITE_API_URL is /api', async () => {
+    vi.resetModules();
+    vi.stubEnv('VITE_API_URL', '/api');
+
+    const { protectedAPI: proxyProtectedAPI, setAccessToken: setProxyToken } =
+      await import('./api');
+
+    setProxyToken('tok');
+    mockFetch.mockResolvedValueOnce(okResponse({ items: [] }));
+
+    await proxyProtectedAPI.getData();
+
+    expect(mockFetch).toHaveBeenCalledWith(
+      '/api/data',
+      expect.objectContaining({ credentials: 'include' }),
+    );
+
+    vi.unstubAllEnvs();
+    vi.resetModules();
+  });
 });

@@ -87,8 +87,31 @@ FRONTEND_PORT=80
 Use proxy mode to avoid CORS during local containerized setup:
 
 1. Set `VITE_API_URL=/api` at build time
-2. Uncomment `location /api` in `nginx.conf`
+2. Enable both `/api/auth/` rewrite and `/api/` passthrough proxy blocks in `nginx.conf`
 3. Ensure backend is reachable as `http://backend:3000`
+
+Example nginx proxy pattern:
+
+```nginx
+location /api/auth/ {
+	rewrite            ^/api/(auth/.*)$ /$1 break;
+	proxy_pass         http://backend:3000;
+	proxy_http_version 1.1;
+	proxy_set_header   Host              $host;
+	proxy_set_header   X-Real-IP         $remote_addr;
+	proxy_set_header   X-Forwarded-For   $proxy_add_x_forwarded_for;
+	proxy_set_header   X-Forwarded-Proto $scheme;
+}
+
+location /api/ {
+	proxy_pass         http://backend:3000;
+	proxy_http_version 1.1;
+	proxy_set_header   Host              $host;
+	proxy_set_header   X-Real-IP         $remote_addr;
+	proxy_set_header   X-Forwarded-For   $proxy_add_x_forwarded_for;
+	proxy_set_header   X-Forwarded-Proto $scheme;
+}
+```
 
 Helper command:
 
@@ -133,4 +156,4 @@ Current implementation in this repository:
 - CSP and browser hardening headers in `nginx.conf`
 - GitHub Actions image vulnerability scanning (`.github/workflows/container-security.yml`)
 
-Last Updated: 2026-02-22
+Last Updated: 2026-02-23
