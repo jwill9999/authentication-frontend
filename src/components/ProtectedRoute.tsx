@@ -26,8 +26,8 @@ const ProtectedRoute = ({
     );
   }
 
-  // Require both an in-memory token and a known user
-  if (!token || !user) {
+  // Require an in-memory token; user may be restored/fetched lazily
+  if (!token) {
     return <Navigate to="/login" replace />;
   }
 
