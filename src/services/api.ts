@@ -76,17 +76,24 @@ export const refreshAccessTokenDetailed =
         const data = await parseJsonSafely<RefreshResponse>(response);
 
         if (!response.ok) {
+          const isUnauthorized =
+            response.status === 401 || response.status === 403;
+
+          if (isUnauthorized) {
+            // Clear any stale in-memory access token when refresh is unauthorized
+            accessToken = null;
+          }
+
           return {
             token: null,
-            outcome:
-              response.status === 401 || response.status === 403
-                ? 'unauthorized'
-                : 'server_error',
+            outcome: isUnauthorized ? 'unauthorized' : 'server_error',
             statusCode: response.status,
           };
         }
 
         if (!data?.token) {
+          // Response is structurally invalid; clear any stale in-memory token
+          accessToken = null;
           return {
             token: null,
             outcome: 'invalid_response',
@@ -144,6 +151,10 @@ const fetchWithAuth = async (
   if (response.status === 401 && !_retry) {
     const refreshResult = await refreshAccessTokenDetailed();
     if (refreshResult.outcome !== 'success' || !refreshResult.token) {
+      // If refresh is unauthorized, clear the in-memory access token so callers can react
+      if (refreshResult.outcome === 'unauthorized') {
+        accessToken = null;
+      }
       return response;
     }
 
