@@ -360,9 +360,17 @@ describe('protectedAPI.getProfile', () => {
 
     expect(data).toEqual({ id: '42' });
     expect(cancelBody).toHaveBeenCalledTimes(1);
-    expect(cancelBody.mock.invocationCallOrder[0]).toBeLessThan(
-      mockFetch.mock.invocationCallOrder[2],
-    );
+    const cancelOrder = cancelBody.mock.invocationCallOrder[0];
+    const retryFetchOrder = mockFetch.mock.invocationCallOrder[2];
+
+    expect(cancelOrder).toBeDefined();
+    expect(retryFetchOrder).toBeDefined();
+
+    if (cancelOrder === undefined || retryFetchOrder === undefined) {
+      throw new Error('Expected call-order entries for cancel and retry calls');
+    }
+
+    expect(cancelOrder).toBeLessThan(retryFetchOrder);
   });
 
   it('throws when refresh also fails (max 1 retry)', async () => {
