@@ -9,7 +9,7 @@ interface ProtectedRouteProps {
 const ProtectedRoute = ({
   children,
 }: ProtectedRouteProps): React.JSX.Element => {
-  const { user, token, loading } = useAuth();
+  const { token, loading } = useAuth();
 
   if (loading) {
     return (

@@ -8,7 +8,7 @@ COPY package*.json ./
 
 # Pull latest patched Alpine packages and install dependencies
 RUN apk update && apk upgrade --no-cache \
-	&& npm ci --omit=dev
+	&& HUSKY=0 npm ci
 
 # VITE_API_URL is baked into the bundle at build time by Vite.
 # Pass at build time: docker build --build-arg VITE_API_URL=https://api.example.com

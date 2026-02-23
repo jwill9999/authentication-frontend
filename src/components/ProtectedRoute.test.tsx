@@ -60,9 +60,10 @@ describe('ProtectedRoute', () => {
     expect(screen.queryByText('Protected Content')).not.toBeInTheDocument();
   });
 
-  it('redirects to /login when token is present but user is missing', () => {
+  it('renders children when token is present but user is missing', () => {
     renderRoute({ loading: false, token: 'tok', user: null });
-    expect(screen.getByText('Login Page')).toBeInTheDocument();
+    expect(screen.getByText('Protected Content')).toBeInTheDocument();
+    expect(screen.queryByText('Login Page')).not.toBeInTheDocument();
   });
 
   it('redirects to /login when user is present but token is missing', () => {
