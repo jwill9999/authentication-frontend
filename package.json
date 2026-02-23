@@ -63,6 +63,9 @@
     "vitest": "^4.0.18"
   },
   "overrides": {
-    "minimatch": "^10.2.1"
+    "minimatch": {
+      "version": "^10.2.1",
+      "reason": "Force minimatch >=10.2.1 to address known security issues reported by npm audit in transitive dependencies."
+    }
   }
 }
