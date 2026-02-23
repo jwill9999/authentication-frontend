@@ -53,13 +53,13 @@ export const AuthProvider = ({
   children,
 }: AuthProviderProps): React.JSX.Element => {
   // Access token lives only in memory (mirrored from api.ts module variable)
-  const [token, setTokenState] = useState<string | null>(null);
+  const [token, setToken] = useState<string | null>(null);
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const setToken = useCallback((newToken: string | null) => {
+  const updateToken = useCallback((newToken: string | null) => {
     setAccessToken(newToken); // keep module-level variable in sync
-    setTokenState(newToken);
+    setToken(newToken);
   }, []);
 
   // ── On mount: silent refresh to restore session from httpOnly cookie ──────
@@ -68,7 +68,7 @@ export const AuthProvider = ({
       const newToken = await refreshAccessToken();
 
       if (newToken) {
-        setTokenState(newToken);
+        setToken(newToken);
 
         const storedUser = localStorage.getItem('user');
         if (storedUser) {
@@ -85,7 +85,7 @@ export const AuthProvider = ({
     };
 
     restoreSession();
-  }, [refreshAccessToken, isUser]);
+  }, []);
 
   // ── Proactive refresh at 4m mark to avoid a latency-inducing 401 ─────────
   useEffect(() => {
@@ -97,17 +97,17 @@ export const AuthProvider = ({
       const refreshResult = await refreshAccessTokenDetailed();
 
       if (refreshResult.outcome === 'success' && refreshResult.token) {
-        setTokenState(refreshResult.token);
+        setToken(refreshResult.token);
       } else if (refreshResult.outcome === 'unauthorized') {
         // Refresh failed — clear session and let ProtectedRoute redirect
-        setToken(null);
+        updateToken(null);
         setUser(null);
         localStorage.removeItem('user');
       }
     }, REFRESH_INTERVAL_MS);
 
     return () => clearInterval(timerId);
-  }, [token, setToken, refreshAccessTokenDetailed]);
+  }, [token, updateToken]);
 
   // ── Login ─────────────────────────────────────────────────────────────────
   const login = useCallback(
@@ -117,7 +117,7 @@ export const AuthProvider = ({
 
         if (response.success) {
           const inMemoryToken = getAccessToken(); // set inside authAPI.login
-          if (inMemoryToken) setTokenState(inMemoryToken);
+          if (inMemoryToken) setToken(inMemoryToken);
 
           const userFromResponse: User = response.user ?? { email };
           setUser(userFromResponse);
@@ -161,7 +161,7 @@ export const AuthProvider = ({
 
         const inMemoryToken = getAccessToken(); // set inside authAPI.register
         if (inMemoryToken) {
-          setTokenState(inMemoryToken);
+          setToken(inMemoryToken);
 
           const fallbackUser: User = {
             email,
@@ -185,24 +185,24 @@ export const AuthProvider = ({
   // ── Logout ────────────────────────────────────────────────────────────────
   const logout = useCallback(async (): Promise<void> => {
     await authAPI.logout(); // revokes server-side session + clears httpOnly cookie
-    setToken(null);
+    updateToken(null);
     setUser(null);
     localStorage.removeItem('user');
-  }, [setToken]);
+  }, [updateToken]);
 
   // ── Logout all devices ────────────────────────────────────────────────────
   const logoutAll = useCallback(async (): Promise<void> => {
     await authAPI.logoutAll();
-    setToken(null);
+    updateToken(null);
     setUser(null);
     localStorage.removeItem('user');
-  }, [setToken]);
+  }, [updateToken]);
 
   const googleLogin = useCallback((): void => {
     authAPI.googleLogin();
   }, []);
 
-  const contextValue = useMemo<AuthContextValue>(
+  const contextValue: AuthContextValue = useMemo(
     () => ({
       user,
       token,
@@ -212,7 +212,7 @@ export const AuthProvider = ({
       logoutAll,
       googleLogin,
       loading,
-      setToken,
+      setToken: updateToken,
       setUser,
     }),
     [
@@ -224,7 +224,7 @@ export const AuthProvider = ({
       logoutAll,
       googleLogin,
       loading,
-      setToken,
+      updateToken,
       setUser,
     ],
   );

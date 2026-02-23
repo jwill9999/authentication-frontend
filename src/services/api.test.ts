@@ -5,6 +5,7 @@ import {
   setAccessToken,
   getAccessToken,
   authAPI,
+  ApiHttpError,
   protectedAPI,
 } from './api';
 
@@ -342,17 +343,23 @@ describe('protectedAPI.getProfile', () => {
     mockFetch
       .mockResolvedValueOnce(errorResponse({}, 401)) // original → 401
       .mockResolvedValueOnce(errorResponse({}, 401)); // refresh → 401 (fails)
-    await expect(protectedAPI.getProfile()).rejects.toThrow(
-      'Failed to fetch profile',
-    );
+    const error = await protectedAPI.getProfile().catch((err) => err);
+    expect(error).toBeInstanceOf(ApiHttpError);
+    expect(error).toMatchObject({
+      message: 'Failed to fetch profile',
+      status: 401,
+    });
   });
 
-  it('throws when initial response is a non-401 error', async () => {
+  it('throws when initial response is a non-401 error and preserves status', async () => {
     setAccessToken('tok');
     mockFetch.mockResolvedValueOnce(errorResponse({}, 500));
-    await expect(protectedAPI.getProfile()).rejects.toThrow(
-      'Failed to fetch profile',
-    );
+    const error = await protectedAPI.getProfile().catch((err) => err);
+    expect(error).toBeInstanceOf(ApiHttpError);
+    expect(error).toMatchObject({
+      message: 'Failed to fetch profile',
+      status: 500,
+    });
   });
 });
 
@@ -364,11 +371,14 @@ describe('protectedAPI.getData', () => {
     expect(await protectedAPI.getData()).toEqual({ items: [1, 2] });
   });
 
-  it('throws on failure', async () => {
+  it('throws on failure and preserves status', async () => {
     setAccessToken('tok');
     mockFetch.mockResolvedValueOnce(errorResponse({}, 403));
-    await expect(protectedAPI.getData()).rejects.toThrow(
-      'Failed to fetch data',
-    );
+    const error = await protectedAPI.getData().catch((err) => err);
+    expect(error).toBeInstanceOf(ApiHttpError);
+    expect(error).toMatchObject({
+      message: 'Failed to fetch data',
+      status: 403,
+    });
   });
 });

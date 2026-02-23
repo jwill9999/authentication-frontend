@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
-import { protectedAPI } from '../services/api';
+import { ApiHttpError, protectedAPI } from '../services/api';
 import './Dashboard.css';
 
 type ProfileData = Record<string, unknown>;
@@ -28,29 +28,20 @@ const Dashboard = (): React.JSX.Element => {
         const data = await protectedAPI.getProfile();
         setProfile(data);
       } catch (err) {
-        const maybeErrorWithStatus = err as { status?: number } | null | undefined;
-        const isUnauthorized =
-          typeof maybeErrorWithStatus === 'object' &&
-          maybeErrorWithStatus !== null &&
-          typeof maybeErrorWithStatus.status === 'number' &&
-          maybeErrorWithStatus.status === 401;
-
-        const message = getErrorMessage(err);
-
         // If session expired or token reuse detected (401), force re-login
-        if (isUnauthorized) {
+        if (err instanceof ApiHttpError && err.status === 401) {
           await logout();
           navigate('/login');
           return;
         }
-        setError(message);
+        setError(getErrorMessage(err));
       } finally {
         setLoading(false);
       }
     };
 
     fetchProfile();
-  }, [logout, navigate, protectedAPI, getErrorMessage]);
+  }, [logout, navigate]);
 
   const handleLogout = async (): Promise<void> => {
     await logout();

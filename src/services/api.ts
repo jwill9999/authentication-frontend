@@ -20,6 +20,16 @@ export interface RefreshAccessTokenResult {
   statusCode?: number;
 }
 
+export class ApiHttpError extends Error {
+  public readonly status: number;
+
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = 'ApiHttpError';
+    this.status = status;
+  }
+}
+
 // ─── In-memory access token (never written to localStorage) ──────────────────
 let accessToken: string | null = null;
 
@@ -247,14 +257,26 @@ export const authAPI = {
 export const protectedAPI = {
   getProfile: async (): Promise<JsonObject> => {
     const response = await fetchWithAuth(`${API_URL}/api/profile`);
-    if (!response.ok) throw new Error('Failed to fetch profile');
+    if (!response.ok) {
+      const errorData = await parseJsonSafely<ApiMessageFields>(response);
+      throw new ApiHttpError(
+        getApiErrorMessage(errorData, 'Failed to fetch profile'),
+        response.status,
+      );
+    }
     const data = await parseJsonSafely<JsonObject>(response);
     return data ?? {};
   },
 
   getData: async (): Promise<JsonObject> => {
     const response = await fetchWithAuth(`${API_URL}/api/data`);
-    if (!response.ok) throw new Error('Failed to fetch data');
+    if (!response.ok) {
+      const errorData = await parseJsonSafely<ApiMessageFields>(response);
+      throw new ApiHttpError(
+        getApiErrorMessage(errorData, 'Failed to fetch data'),
+        response.status,
+      );
+    }
     const data = await parseJsonSafely<JsonObject>(response);
     return data ?? {};
   },

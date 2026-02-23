@@ -5,11 +5,16 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import Dashboard from './Dashboard';
 import * as AuthContextModule from '../context/AuthContext';
 import * as apiModule from '../services/api';
+import { ApiHttpError } from '../services/api';
 
 vi.mock('../context/AuthContext', () => ({ useAuth: vi.fn() }));
-vi.mock('../services/api', () => ({
-  protectedAPI: { getProfile: vi.fn(), getData: vi.fn() },
-}));
+vi.mock('../services/api', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../services/api')>();
+  return {
+    ...actual,
+    protectedAPI: { getProfile: vi.fn(), getData: vi.fn() },
+  };
+});
 
 const mockUseAuth = vi.mocked(AuthContextModule.useAuth);
 const mockGetProfile = vi.mocked(apiModule.protectedAPI.getProfile);
@@ -136,7 +141,7 @@ describe('Dashboard', () => {
   });
 
   it('calls logout and navigates to /login on 401 profile error', async () => {
-    mockGetProfile.mockRejectedValueOnce(new Error('401 Unauthorized'));
+    mockGetProfile.mockRejectedValueOnce(new ApiHttpError('Unauthorized', 401));
     const auth = renderDashboard();
 
     await waitFor(() =>
