@@ -7,5 +7,9 @@
 			"path": "../express-auth-app"
 		}
 	],
-	"settings": {}
+	"settings": {
+		"cSpell.words": [
+			"vite"
+		]
+	}
 }
