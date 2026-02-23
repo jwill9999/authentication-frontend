@@ -56,20 +56,21 @@ Detailed, retrieval-friendly API documentation lives in:
 
 ## Session Strategy
 
-- Token/user stored in localStorage
-- Token included for protected API requests
-- Logout clears persisted auth state
+- Access token stored in memory only (not localStorage)
+- Non-sensitive user profile may be stored in localStorage (`user`)
+- Token included for protected API requests via in-memory auth state
+- Logout clears in-memory token and persisted user state
 
 ## Flow Summary
 
 - Login: validate → authenticate → persist session → redirect dashboard
 - Register: validate → create account → redirect login
 - Google OAuth: redirect to backend → callback token capture → persist session
-- Protected routes: enforce session presence before rendering dashboard
+- Protected routes: require token presence; user profile may hydrate lazily
 
 ## Notes
 
 - Keep this file concise and navigational.
 - Put contract-level request/response details in `docs/api/*`.
 
-Last Updated: 2026-02-22
+Last Updated: 2026-02-23

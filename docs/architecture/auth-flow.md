@@ -5,7 +5,7 @@
 1. User submits credentials on `/login`
 2. Frontend validates input
 3. `POST /auth/login`
-4. Token/user persisted in localStorage
+4. Access token stored in memory; non-sensitive user profile may be persisted in localStorage
 5. Redirect to `/dashboard`
 
 ## Register
@@ -20,11 +20,11 @@
 1. User clicks Google auth button
 2. Redirect to backend `/auth/google`
 3. Callback returns to `/auth/google/callback?token=...`
-4. Token persisted, then redirect to dashboard
+4. Token loaded into in-memory auth state (user profile optionally persisted), then redirect to dashboard
 
 ## Logout
 
 - Clear local auth state and localStorage
 - Redirect to `/login`
 
-Last Updated: 2026-02-22
+Last Updated: 2026-02-23

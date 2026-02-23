@@ -10,7 +10,7 @@
 
 ## Guarding Rules
 
-- Unauthenticated users are redirected from protected routes to `/login`
-- Authenticated users should not be blocked from dashboard flow
+- Protected routes require an access token; missing token redirects to `/login`
+- Presence of `user` profile is not required at guard-time and may hydrate after route entry
 
-Last Updated: 2026-02-22
+Last Updated: 2026-02-23
