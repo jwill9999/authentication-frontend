@@ -144,6 +144,10 @@ const fetchWithAuth = async (
   if (response.status === 401 && !_retry) {
     const refreshResult = await refreshAccessTokenDetailed();
     if (refreshResult.outcome !== 'success' || !refreshResult.token) {
+      // If refresh is unauthorized, clear the in-memory access token so callers can react
+      if (refreshResult.outcome === 'unauthorized') {
+        accessToken = null;
+      }
       return response;
     }
 
