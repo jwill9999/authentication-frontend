@@ -47,6 +47,12 @@ Detailed, retrieval-friendly API documentation lives in:
 - `GET /api/profile` → `protectedAPI.getProfile()`
 - `GET /api/data` → `protectedAPI.getData()`
 
+### Session/Auth Lifecycle
+
+- `POST /auth/refresh` → `refreshAccessTokenDetailed()` / `refreshAccessToken()` in `src/services/api.ts`
+- `POST /auth/logout` → `authAPI.logout()`
+- `POST /auth/logout-all` → `authAPI.logoutAll()`
+
 ## Configuration
 
 **Backend URL:** Set via environment variable
