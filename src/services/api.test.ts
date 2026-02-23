@@ -338,6 +338,33 @@ describe('protectedAPI.getProfile', () => {
     expect(mockFetch).toHaveBeenCalledTimes(3);
   });
 
+  it('cancels original 401 response body before retrying after refresh', async () => {
+    setAccessToken('expired');
+
+    const cancelBody = vi.fn().mockResolvedValue(undefined);
+    const unauthorizedResponse = {
+      ok: false,
+      status: 401,
+      json: async () => ({}),
+      body: {
+        cancel: cancelBody,
+      },
+    };
+
+    mockFetch
+      .mockResolvedValueOnce(unauthorizedResponse) // original → 401
+      .mockResolvedValueOnce(okResponse({ success: true, token: 'new-tok' })) // refresh
+      .mockResolvedValueOnce(okResponse({ id: '42' })); // retry
+
+    const data = await protectedAPI.getProfile();
+
+    expect(data).toEqual({ id: '42' });
+    expect(cancelBody).toHaveBeenCalledTimes(1);
+    expect(cancelBody.mock.invocationCallOrder[0]).toBeLessThan(
+      mockFetch.mock.invocationCallOrder[2],
+    );
+  });
+
   it('throws when refresh also fails (max 1 retry)', async () => {
     setAccessToken('expired');
     mockFetch

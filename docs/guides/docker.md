@@ -66,6 +66,7 @@ make docker-down
 
 - `VITE_API_URL` is passed as a build arg and baked into the Vite bundle.
 - `FRONTEND_PORT` maps host port to container port `8080`.
+- Preferred deployment mode is same-origin `/api` proxy for tighter CSP and simpler CORS behavior.
 
 Example `.env` values:
 
@@ -74,7 +75,14 @@ VITE_API_URL=http://localhost:3000
 FRONTEND_PORT=80
 ```
 
-## API Proxy Mode (Optional)
+Production-friendly proxy-mode example:
+
+```env
+VITE_API_URL=/api
+FRONTEND_PORT=80
+```
+
+## API Proxy Mode (Recommended)
 
 Use proxy mode to avoid CORS during local containerized setup:
 

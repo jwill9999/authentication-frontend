@@ -20,10 +20,10 @@ ci-local: ## Full local CI-equivalent checks (lint-ci + typecheck + test + build
 
 verify: ci-local ## Backward-compatible alias for ci-local
 
-lint: ## Run local lint (warning-friendly)
+lint: ## Run local lint (fails on warnings)
 	npm run lint
 
-lint-ci: ## Run strict lint (fails on warnings)
+lint-ci: ## Run strict lint for CI (fails on warnings)
 	npm run lint:ci
 
 typecheck: ## Run TypeScript type checking

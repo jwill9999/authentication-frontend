@@ -17,6 +17,8 @@ Frontend environment variables for local and containerized runs.
 - Default: `http://localhost:3000`
 - Used in: `src/services/api.ts`
 - Important: with Vite, this value is injected at build time
+- Recommended for containerized/prod deployments: `/api` (same-origin proxy mode)
+- Security note: nginx CSP allows same-origin and secure external API origins (`https:` / `wss:`)
 
 Examples:
 

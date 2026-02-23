@@ -158,6 +158,14 @@ const fetchWithAuth = async (
       return response;
     }
 
+    // Best-effort cleanup: the original 401 response will not be consumed
+    // because we are about to retry the request.
+    try {
+      await response.body?.cancel();
+    } catch {
+      // Ignore cancellation failures and continue with retry.
+    }
+
     const retryHeaders = new Headers(requestOptions.headers);
     retryHeaders.set('Authorization', `Bearer ${refreshResult.token}`);
 
