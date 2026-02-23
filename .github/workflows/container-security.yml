@@ -38,7 +38,7 @@ jobs:
           format: sarif
           output: trivy-results.sarif
           scanners: vuln
-          vuln-type: os,library
+          pkg-types: os,library
           severity: CRITICAL,HIGH
           ignore-unfixed: true
           exit-code: 0
@@ -53,7 +53,7 @@ jobs:
         run: |
           trivy image \
             --scanners vuln \
-            --vuln-type os,library \
+            --pkg-types os,library \
             --severity "${{ github.event_name == 'schedule' && 'HIGH,CRITICAL' || 'CRITICAL' }}" \
             --ignore-unfixed \
             --format table \
