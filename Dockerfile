@@ -21,6 +21,11 @@ RUN npm run build
 # ── Stage 2: Serve ────────────────────────────────────────────────────────────
 FROM nginxinc/nginx-unprivileged:1.27-alpine AS runner
 
+USER root
+
+# Pull latest patched Alpine packages in the runtime image
+RUN apk update && apk upgrade --no-cache
+
 # Remove default nginx config
 RUN rm /etc/nginx/conf.d/default.conf
 
@@ -29,6 +34,8 @@ COPY --from=builder /app/dist /usr/share/nginx/html
 
 # Copy custom nginx config (handles SPA routing + security headers)
 COPY nginx.conf /etc/nginx/conf.d/default.conf
+
+USER 101
 
 EXPOSE 8080
 
