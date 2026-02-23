@@ -37,6 +37,7 @@
 ## Register Behavior
 
 - Frontend redirects to `/login?registered=1` on success
-- No auto-login behavior by default
+- If the backend returns an access token on successful registration, the client hydrates the token and user (effective auto-login)
+- If no token is returned, the user remains unauthenticated and must log in manually
 
-Last Updated: 2026-02-22
+Last Updated: 2026-02-23
