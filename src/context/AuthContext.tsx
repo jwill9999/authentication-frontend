@@ -68,7 +68,7 @@ export const AuthProvider = ({
       const newToken = await refreshAccessToken();
 
       if (newToken) {
-        setToken(newToken);
+        updateToken(newToken);
 
         const storedUser = localStorage.getItem('user');
         if (storedUser) {
@@ -85,7 +85,7 @@ export const AuthProvider = ({
     };
 
     restoreSession();
-  }, []);
+  }, [updateToken]);
 
   // ── Proactive refresh at 4m mark to avoid a latency-inducing 401 ─────────
   useEffect(() => {
@@ -117,7 +117,7 @@ export const AuthProvider = ({
 
         if (response.success) {
           const inMemoryToken = getAccessToken(); // set inside authAPI.login
-          if (inMemoryToken) setToken(inMemoryToken);
+          if (inMemoryToken) updateToken(inMemoryToken);
 
           const userFromResponse: User = response.user ?? { email };
           setUser(userFromResponse);
@@ -139,7 +139,7 @@ export const AuthProvider = ({
         return { success: false, error: getErrorMessage(error) };
       }
     },
-    [],
+    [updateToken],
   );
 
   // ── Register ──────────────────────────────────────────────────────────────
@@ -161,7 +161,7 @@ export const AuthProvider = ({
 
         const inMemoryToken = getAccessToken(); // set inside authAPI.register
         if (inMemoryToken) {
-          setToken(inMemoryToken);
+          updateToken(inMemoryToken);
 
           const fallbackUser: User = {
             email,
@@ -179,7 +179,7 @@ export const AuthProvider = ({
         return { success: false, error: getErrorMessage(error) };
       }
     },
-    [],
+    [updateToken],
   );
 
   // ── Logout ────────────────────────────────────────────────────────────────
