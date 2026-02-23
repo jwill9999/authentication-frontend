@@ -17,128 +17,69 @@ A React application with authentication, form validation, and protected routes.
     - At least 1 lowercase letter
     - At least 1 number
 
-## Installation
+## Quick Start
+
+First-time setup:
+
+```bash
+cp .env.example .env
+```
+
+Then install and run:
 
 ```bash
 npm install
+npm run dev
 ```
 
-## Running the App
+Recommended local check command:
 
 ```bash
-npm run dev
+make quick-check
 ```
 
 The app will start at `http://localhost:5173`
 
-## Structure
+## Docker (Optional)
 
-```
-login-app/
-├── src/
-│   ├── components/
-│   │   └── ProtectedRoute.jsx    # Route protection component
-│   ├── context/
-│   │   └── AuthContext.jsx       # Authentication state management
-│   ├── pages/
-│   │   ├── Login.jsx             # Login page with validation
-│   │   ├── Register.jsx          # Registration page for first-time users
-│   │   ├── Login.css
-│   │   ├── Dashboard.jsx         # Protected dashboard page
-│   │   └── Dashboard.css
-│   ├── App.jsx                   # Main app with routing
-│   ├── main.jsx                  # App entry point
-│   └── index.css                 # Global styles
-└── index.html
+Preflight:
 
-```
+- Ensure `.env` exists (copy from `.env.example` if needed).
+- Ensure `package-lock.json` exists in the repo.
+  - This repo already includes `package-lock.json`.
+  - If it is missing in your local copy, run `npm install` once to regenerate it.
 
-## Registering a First-Time User
-
-From the UI:
-1. Open `/login`
-2. Click `Create an account`
-3. Fill in:
-   - Email
-   - Password (min 8 chars, 1 uppercase, 1 lowercase, 1 number)
-   - Name (optional)
-4. Submit to create the account
-5. On success, you are redirected to `/login` and must sign in with the new credentials
-
-Via API (cURL):
+Build and run with Docker Compose:
 
 ```bash
-curl -X POST http://localhost:3000/auth/register \
-  -H "Content-Type: application/json" \
-  -d '{
-    "email": "newuser@example.com",
-    "password": "SecurePass123!",
-    "name": "New User"
-  }'
+make docker-build
+make docker-up
 ```
 
-## Login API Contract
+The container serves the app at `http://localhost` by default.
 
-Request body:
+Configuration:
 
-```json
-{
-  "email": "user@example.com",
-  "password": "Password123!"
-}
+- `VITE_API_URL` is baked in at build time (see `.env.example`)
+- `FRONTEND_PORT` controls the host port (default `80`)
+
+Stop services:
+
+```bash
+make docker-down
 ```
 
-Success response:
+Useful `Makefile` commands:
 
-```json
-{
-  "success": true,
-  "message": "Login successful",
-  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
-  "user": {
-    "id": "string",
-    "email": "user@example.com",
-    "name": "string"
-  }
-}
-```
-
-## Testing the Validation
-
-Try these test cases:
-
-**Invalid Email:**
-- `test` (no @ or domain)
-- `test@` (no domain)
-
-**Invalid Password:**
-- `password` (no uppercase or number)
-- `Password` (no number)
-- `Pass1` (less than 8 characters)
-
-**Valid Login:**
-- Email: `user@example.com`
-- Password: `Password123!`
-
-## Backend Integration
-
-The app is ready to connect to an Express backend. Update the `login` function in `src/context/AuthContext.jsx` to make API calls to your backend endpoints.
-
-Example:
-```javascript
-const login = async (email, password) => {
-  const response = await fetch('http://localhost:3000/api/auth/login', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email, password })
-  })
-  const data = await response.json()
-  if (response.ok) {
-    setUser(data.user)
-    return true
-  }
-  return false
-}
+```bash
+make help
+make quick-check
+make ci-local
+make docker-build
+make docker-up
+make docker-health
+make docker-logs
+make docker-down
 ```
 
 ## Routes
@@ -146,4 +87,22 @@ const login = async (email, password) => {
 - `/` - Redirects to login
 - `/login` - Login page
 - `/register` - Registration page
+- `/auth/google/callback` - Google OAuth callback route
 - `/dashboard` - Protected dashboard (requires authentication)
+
+## Further Reading
+
+- Documentation hub: [docs/README.md](docs/README.md)
+- Setup guide: [docs/guides/setup.md](docs/guides/setup.md)
+- CI/CD guide: [docs/guides/ci-cd.md](docs/guides/ci-cd.md)
+- Branch protection setup: [docs/guides/ci-cd.md#github-ui-setup-branch-protection](docs/guides/ci-cd.md#github-ui-setup-branch-protection)
+- Environment variables: [docs/guides/environment.md](docs/guides/environment.md)
+- Secrets management: [docs/guides/secrets-management.md](docs/guides/secrets-management.md)
+- Proxy-agnostic design: [docs/guides/proxy-agnostic-design.md](docs/guides/proxy-agnostic-design.md)
+- Development workflow: [docs/guides/development.md](docs/guides/development.md)
+- Testing guide: [docs/guides/testing.md](docs/guides/testing.md)
+- Docker guide: [docs/guides/docker.md](docs/guides/docker.md)
+- API integration overview: [docs/API_INTEGRATION.md](docs/API_INTEGRATION.md)
+- API contracts: [docs/api/endpoints.md](docs/api/endpoints.md), [docs/api/auth-contracts.md](docs/api/auth-contracts.md), [docs/api/error-handling.md](docs/api/error-handling.md)
+- Frontend architecture: [docs/architecture/overview.md](docs/architecture/overview.md)
+- Session & security model: [docs/architecture/session-security.md](docs/architecture/session-security.md)
