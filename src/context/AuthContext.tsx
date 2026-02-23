@@ -117,7 +117,14 @@ export const AuthProvider = ({
 
         if (response.success) {
           const inMemoryToken = getAccessToken(); // set inside authAPI.login
-          if (inMemoryToken) updateToken(inMemoryToken);
+          if (!inMemoryToken) {
+            return {
+              success: false,
+              error: 'Login failed: access token was not returned',
+            };
+          }
+
+          updateToken(inMemoryToken);
 
           const userFromResponse: User = response.user ?? { email };
           setUser(userFromResponse);

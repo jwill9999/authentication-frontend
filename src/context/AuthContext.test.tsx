@@ -150,6 +150,44 @@ describe('login', () => {
     expect(localStorage.getItem('user')).toContain('user@test.com');
   });
 
+  it('returns error and does not persist user when login succeeds without access token', async () => {
+    mockedLogin.mockResolvedValueOnce({
+      success: true,
+      user: { email: 'user@test.com' },
+    });
+    mockedGetAccessToken.mockReturnValueOnce(null);
+
+    let result: { success: boolean; error?: string } | undefined;
+    const CapturingConsumer = () => {
+      const { login } = useAuth();
+      return (
+        <button
+          onClick={async () => {
+            result = await login('a@b.com', 'pass');
+          }}
+        >
+          Login
+        </button>
+      );
+    };
+
+    render(
+      <AuthProvider>
+        <CapturingConsumer />
+      </AuthProvider>,
+    );
+    await waitFor(() => screen.getByText('Login'));
+
+    await userEvent.click(screen.getByText('Login'));
+    await waitFor(() => expect(result).toBeDefined());
+
+    expect(result).toEqual({
+      success: false,
+      error: 'Login failed: access token was not returned',
+    });
+    expect(localStorage.getItem('user')).toBeNull();
+  });
+
   it('returns error result when login throws', async () => {
     mockedLogin.mockRejectedValueOnce(new Error('Invalid credentials'));
 
