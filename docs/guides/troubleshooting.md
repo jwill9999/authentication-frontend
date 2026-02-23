@@ -9,12 +9,13 @@
 
 ### 2) Redirect loop on protected routes
 
-- Verify token is stored in localStorage
-- Verify `ProtectedRoute` auth checks
+- Verify an in-memory access token is being set after login/refresh
+- Verify localStorage contains only non-sensitive user profile (`user`)
+- Verify `ProtectedRoute` token guard behavior
 
 ### 3) Google callback token missing
 
 - Confirm backend callback includes `token` query param
 - Confirm frontend callback route is correct
 
-Last Updated: 2026-02-22
+Last Updated: 2026-02-23
