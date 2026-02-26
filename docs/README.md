@@ -24,6 +24,7 @@ Central index for frontend documentation.
   - [Secrets Management](./guides/secrets-management.md)
   - [Proxy-Agnostic Design](./guides/proxy-agnostic-design.md)
   - [Development](./guides/development.md)
+  - [Git Branch + Worktree Cheatsheet](./guides/git-branch-worktree-cheatsheet.md)
   - [Testing](./guides/testing.md)
   - [Docker](./guides/docker.md)
   - [Troubleshooting](./guides/troubleshooting.md)
@@ -41,4 +42,4 @@ Update this file when:
 - scripts/workflow change,
 - major docs are added or moved.
 
-Last Updated: 2026-02-22
+Last Updated: 2026-02-23

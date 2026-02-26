@@ -20,7 +20,7 @@ Last Updated: 22-02-2026
 **ID:** feature-24-02-2026-001
 **Status:** not started
 **Created:** 24/02/2026 (GMT)
-**Date Completed:**
+**Date Completed:** not completed  
 **Mode:** sequential
 **Description:** Change the style and colour of the login button
 **Dependencies:**
@@ -40,31 +40,12 @@ Last Updated: 22-02-2026
 | Test login page for new styles/accessibility | subtask-003 | not started | sequential | subtask-002 | 24/02/2026 (GMT) |           |
 | Update documentation/screenshots (optional)  | subtask-004 | not started | sequential | subtask-003 | 24/02/2026 (GMT) |           |
 
-#
-
-### change login title (`change-login-title`)
-
-**ID:** feature-24-02-2026-002
-**Status:** not started
-**Created:** 24/02/2026 (GMT)
-**Completed:**
-**Mode:** sequential
-**Description:** To change the title text content
-**Effort:** Small
-**Priority:** 🟡 Medium
-**Dependencies:**
-**Related Docs:**
-
-#### Acceptance Criteria
-
-- Change title from `Welcome Back` to `Welcome`
-
 ### Change login button colour (`change-login-button-colour`)
 
 **ID:** feature-24-02-2026-001
 **Status:** not started
 **Created:** 24/02/2026 (GMT)
-**Completed:**
+**Completed:** not completed  
 **Mode:** sequential
 **Description:** Change the style and colour of the login button
 **Dependencies:**
