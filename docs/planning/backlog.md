@@ -13,4 +13,4 @@ Use this format:
 - [ ] Criterion 1
 - [ ] Criterion 2
 
-Last Updated: 2026-02-22
+Last Updated: 22-02-2026
