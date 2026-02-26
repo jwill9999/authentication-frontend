@@ -26,3 +26,4 @@ pnpm-debug.log*
 # Editor settings
 .vscode/
 OAuth.code-workspace
+.editorconfig
